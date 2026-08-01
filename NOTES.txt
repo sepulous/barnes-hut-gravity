@@ -1,0 +1,19 @@
+
+TODO: Deal with identical particle positions (causes extreme subdivision)
+         - For large enough particle numbers, this is almost guaranteed to happen at some point
+         - Could allow leaf nodes to have multiple particles with limit on space subdivision
+
+
+TODO: Data
+		* Total Energy vs Time
+        * Angular Momentum vs Time
+        * Virial equillibrium (2*K/U should approach 1 over time)
+        * Accuracy (mean, max, and RMS error compared to brute-force) for different θ
+        * Runtime for different thread counts (OpenMP scaling)
+        * Runtime for different particle counts (O(N^2) vs O(NlogN))
+
+TODO: Look into Z-curve ordering to build tree more efficiently
+        - Also look into not using pointers (https://dl.acm.org/doi/10.1145/358728.358741)
+        - Another interesting one: https://dl.acm.org/doi/10.1145/169627.169640
+
+TODO: Check that θ=0 gives the same results as brute-force method
