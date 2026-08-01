@@ -21,14 +21,14 @@ QuadTree::QuadTree(glm::dvec2 center, glm::dvec2 extents) : center_(center), ext
 	center_of_mass_ = { 0, 0 };
 }
 
-void QuadTree::Add(Point* point)
+void QuadTree::Add(Particle* point)
 {
 	glm::dvec2 pos = point->position;
 
 	if (pos.x < center_.x - extents_.x || pos.x > center_.x + extents_.x || pos.y < center_.y - extents_.y || pos.y > center_.y + extents_.y)
 		return;
 
-	if (!point_)
+	if (!particle_)
 	{
 		if (HasChildren())
 		{
@@ -36,7 +36,7 @@ void QuadTree::Add(Point* point)
 		}
 		else
 		{
-			point_ = point;
+			particle_ = point;
 		}
 	}
 	else
@@ -45,12 +45,12 @@ void QuadTree::Add(Point* point)
 			CreateChildren();
 
 		AddToChild(point);
-		AddToChild(point_);
-		point_ = nullptr;
+		AddToChild(particle_);
+		particle_ = nullptr;
 	}
 }
 
-void QuadTree::AddToChild(Point* point)
+void QuadTree::AddToChild(Particle* point)
 {
 	glm::dvec2 pos = point->position;
 	if (pos.x < center_.x && pos.y >= center_.y)
@@ -122,11 +122,11 @@ void QuadTree::CreateChildren()
 
 void QuadTree::CalculateMass()
 {
-	if (point_) // Leaf node w/ point
+	if (particle_) // Leaf node w/ point
 	{
-		total_mass_ = point_->mass;
-		center_of_mass_.x = point_->position.x;
-		center_of_mass_.y = point_->position.y;
+		total_mass_ = particle_->mass;
+		center_of_mass_.x = particle_->position.x;
+		center_of_mass_.y = particle_->position.y;
 	}
 	else
 	{
@@ -187,9 +187,9 @@ bool QuadTree::HasChildren() const
 	return children_.size() == 4;
 }
 
-Point* QuadTree::GetPoint() const
+Particle* QuadTree::GetParticle() const
 {
-	return point_;
+	return particle_;
 }
 
 void QuadTree::Print(int level)
@@ -199,8 +199,8 @@ void QuadTree::Print(int level)
 
 	if (level == 0)
 		printf("Root\n");
-	else if (point_)
-		printf("Leaf Node (pos = (%f, %f), mass = %f)\n", point_->position.x, point_->position.y, point_->mass);
+	else if (particle_)
+		printf("Leaf Node (pos = (%f, %f), mass = %f)\n", particle_->position.x, particle_->position.y, particle_->mass);
 	else if (!HasChildren())
 		printf("Leaf Node (empty)\n");
 	else

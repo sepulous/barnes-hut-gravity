@@ -2,7 +2,7 @@
 
 #include <glm/glm.hpp>
 
-struct Point
+struct Particle
 {
     glm::dvec2 position;
     glm::dvec2 next_position;

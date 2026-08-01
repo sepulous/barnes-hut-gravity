@@ -12,7 +12,7 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
-#include "helpers.h"
+#include "particle.h"
 #include "shader.h"
 #include "quad_tree.h"
 
@@ -23,7 +23,7 @@ using namespace std::chrono_literals;
 #define MAX_STEPS 1000
 
 double rand_range(double min_inclusive, double max_inclusive);
-glm::dvec2 GetAccelerationAtPoint(Point* point, QuadTree& tree);
+glm::dvec2 GetAccelerationAtParticle(Particle* point, QuadTree& tree);
 
 constexpr size_t NUM_POINTS = 10'000;
 constexpr double TIME_STEP = 0.01;
@@ -47,7 +47,7 @@ int main()
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	window = glfwCreateWindow(800, 800, "Barnes-Hut Simulation", NULL, NULL);
+	window = glfwCreateWindow(800, 800, "Barnes-Hut Gravity Simulation", NULL, NULL);
 	if (!window)
 	{
 		glfwTerminate();
@@ -126,7 +126,7 @@ int main()
 	//
 	// Initial configuration
 	//
-	std::vector<Point> points;
+	std::vector<Particle> points;
 	points.reserve(NUM_POINTS);
 	for (int i = 0; i < NUM_POINTS; i++)
 	{
@@ -141,40 +141,6 @@ int main()
 		});
 		points[i].next_position = points[i].position;
 	}
-	//for (int i = 0; i < NUM_POINTS; i++)
-	//{
-	//	points.push_back({
-	//		.position = {
-	//			.x = 0.99 * std::cos(i * (2.0 * 3.141593 / NUM_POINTS)),
-	//			.y = 0.99 * std::sin(i * (2.0 * 3.141593 / NUM_POINTS))
-	//		},
-	//		.velocity = {0.0, 0.0},
-	//		.acceleration = {0.0, 0.0},
-	//		.mass = 5.0
-	//	});
-	//	points[i].next_position = points[i].position;
-	//}
-
-	double initial_total_energy = 0;
-	for (int i = 0; i < NUM_POINTS; i++)
-	{
-		Point& p1 = points[i];
-
-		// Kinetic
-		initial_total_energy += 0.5 * p1.mass * glm::dot(p1.velocity, p1.velocity);
-
-		for (int j = i + 1; j < NUM_POINTS; j++)
-		{
-			Point& p2 = points[j];
-
-			double r = (p1.position - p2.position).length();
-			double soft_distance = 1.0 / std::sqrt(r * r + SOFTENING * SOFTENING);
-
-			// Potential
-			initial_total_energy += (G * p1.mass * p2.mass) / soft_distance;
-		}
-	}
-	printf("Initial total energy: %f\n", initial_total_energy);
 
 	//
 	// Simulation
@@ -198,7 +164,7 @@ int main()
 		QuadTree tree({ 0, 0 }, { 1, 1 }); // centered at (0, 0), goes from (-1, -1) to (1, 1)
 		for (int i = 0, j = 0; i < NUM_POINTS; i++, j += 2)
 		{
-			Point& point = points[i];
+			Particle& point = points[i];
 			point.position = point.next_position;
 			#if RENDER
 			gpu_positions[j] = static_cast<float>(point.position.x);
@@ -215,14 +181,14 @@ int main()
 		#pragma omp parallel for
 		for (int i = 0; i < NUM_POINTS; i++)
 		{
-			Point& point = points[i];
+			Particle& point = points[i];
 		#else
 		for (auto& point : points)
 		{
 		#endif
-			glm::dvec2 new_acceleration = GetAccelerationAtPoint(&point, tree);
+			glm::dvec2 new_acceleration = GetAccelerationAtParticle(&point, tree);
 
-			point.next_position = point.position + TIME_STEP * point.velocity + 0.5 * TIME_STEP_SQUARED * point.acceleration;
+			point.next_position = point.position + TIME_STEP*point.velocity + 0.5*TIME_STEP_SQUARED*point.acceleration;
 			point.velocity = point.velocity + 0.5 * (point.acceleration + new_acceleration) * TIME_STEP;
 			point.acceleration = new_acceleration;
 		}
@@ -253,30 +219,6 @@ int main()
 		#endif
 	}
 
-	double final_total_energy = 0;
-	double angular_momentum = 0;
-	for (int i = 0; i < NUM_POINTS; i++)
-	{
-		Point& p1 = points[i];
-		angular_momentum += p1.mass * (p1.position.x * p1.velocity.y - p1.position.y * p1.velocity.x);
-
-		// Kinetic
-		final_total_energy += 0.5 * p1.mass *  glm::dot(p1.velocity, p1.velocity);
-
-		for (int j = i + 1; j < NUM_POINTS; j++)
-		{
-			Point& p2 = points[j];
-
-			double r = (p1.position - p2.position).length();
-			double soft_distance = 1.0 / std::sqrt(r * r + SOFTENING * SOFTENING);
-
-			// Potential
-			final_total_energy += (G * p1.mass * p2.mass) / soft_distance;
-		}
-	}
-	printf("Final total energy: %f\n", final_total_energy);
-	printf("Angular momentum: %f\n", angular_momentum);
-
 	glfwTerminate();
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
@@ -293,14 +235,14 @@ double rand_range(double min_inclusive, double max_inclusive)
 	return dist(generator);
 }
 
-glm::dvec2 GetAccelerationAtPoint(Point* point, QuadTree& tree)
+glm::dvec2 GetAccelerationAtParticle(Particle* point, QuadTree& tree)
 {
 	glm::dvec2 acceleration{ 0 };
 
 	glm::dvec2 com_displacement = tree.GetCenterOfMass() - point->position;
 	double com_distance = com_displacement.length();
 	double width = 2.0 * tree.GetExtents().x;
-	if ((tree.GetPoint() && tree.GetPoint() != point) || width / com_distance < THETA) // Use whole node in calculation (leaf node or sufficiently far)
+	if ((tree.GetParticle() && tree.GetParticle() != point) || width / com_distance < THETA) // Use whole node in calculation (leaf node or sufficiently far)
 	{
 		double soft_inv_distance = com_distance * com_distance + SOFTENING * SOFTENING;
 		soft_inv_distance *= soft_inv_distance * soft_inv_distance;
@@ -310,7 +252,7 @@ glm::dvec2 GetAccelerationAtPoint(Point* point, QuadTree& tree)
 	else if (tree.HasChildren()) // Internal node; look at children
 	{
 		for (auto& child : tree.GetChildren())
-			acceleration += GetAccelerationAtPoint(point, child);
+			acceleration += GetAccelerationAtParticle(point, child);
 	}
 
 	return acceleration;

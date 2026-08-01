@@ -6,7 +6,7 @@
 
 #include <glm/glm.hpp>
 
-#include "helpers.h"
+#include "particle.h"
 
 class QuadTree
 {
@@ -21,7 +21,7 @@ public:
 	QuadTree(QuadTree&&) = default;
 	QuadTree& operator=(QuadTree&&) = default;
 
-	void Add(Point*);
+	void Add(Particle*);
 	void CalculateMass();
 	glm::dvec2 GetCenter() const;
 	glm::dvec2 GetExtents() const;
@@ -29,15 +29,15 @@ public:
 	double GetTotalMass() const;
 	std::vector<QuadTree>& GetChildren();
 	bool HasChildren() const;
-	Point* GetPoint() const;
+	Particle* GetParticle() const;
 	void Print(int level = 0);
 
 private:
-	void AddToChild(Point*);
+	void AddToChild(Particle*);
 	void CreateChildren();
 
 private:
-	Point* point_ = nullptr;
+	Particle* particle_ = nullptr;
 	std::vector<QuadTree> children_;
 	glm::dvec2 center_;
 	glm::dvec2 extents_;
