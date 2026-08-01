@@ -13,10 +13,9 @@
 #include "imgui_impl_opengl3.h"
 
 #include "particle.h"
-#include "shader.h"
+#include "shaders.h"
+#include "shader_program.h"
 #include "quad_tree.h"
-
-using namespace std::chrono_literals;
 
 #define RENDER 1
 #define PARALLEL 1
@@ -114,14 +113,7 @@ int main()
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
 	glEnableVertexAttribArray(0);
 
-	Shader shader_program(
-		"C:\\Users\\miner\\source\\repos\\BarnesHut\\src\\point_frag.glsl",
-		"C:\\Users\\miner\\source\\repos\\BarnesHut\\src\\point_vert.glsl",
-		{
-			{2, GL_FLOAT}
-		}
-	);
-	shader_program.Compile();
+	ShaderProgram shader_program(POINT_VERTEX_SHADER, POINT_FRAGMENT_SHADER);
 
 	//
 	// Initial configuration
