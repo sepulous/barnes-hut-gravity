@@ -1,1 +1,1 @@
-# BarnesHut
+# Barnes Hut Gravity Simulation

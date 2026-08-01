@@ -15,7 +15,7 @@ QuadTree::QuadTree()
 	center_of_mass_ = { 0, 0 };
 }
 
-QuadTree::QuadTree(Vec2 center, Vec2 extents) : center_(center), extents_(extents)
+QuadTree::QuadTree(glm::dvec2 center, glm::dvec2 extents) : center_(center), extents_(extents)
 {
 	total_mass_ = 0;
 	center_of_mass_ = { 0, 0 };
@@ -23,7 +23,7 @@ QuadTree::QuadTree(Vec2 center, Vec2 extents) : center_(center), extents_(extent
 
 void QuadTree::Add(Point* point)
 {
-	Vec2 pos = point->position;
+	glm::dvec2 pos = point->position;
 
 	if (pos.x < center_.x - extents_.x || pos.x > center_.x + extents_.x || pos.y < center_.y - extents_.y || pos.y > center_.y + extents_.y)
 		return;
@@ -52,7 +52,7 @@ void QuadTree::Add(Point* point)
 
 void QuadTree::AddToChild(Point* point)
 {
-	Vec2 pos = point->position;
+	glm::dvec2 pos = point->position;
 	if (pos.x < center_.x && pos.y >= center_.y)
 	{
 		children_[TOP_LEFT].Add(point);
@@ -76,46 +76,46 @@ void QuadTree::CreateChildren()
 	children_.reserve(4);
 
 	children_.emplace_back(
-		Vec2{
-			.x = center_.x - 0.5 * extents_.x,
-			.y = center_.y + 0.5 * extents_.y
+		glm::dvec2{
+			center_.x - 0.5 * extents_.x,
+			center_.y + 0.5 * extents_.y
 		},
-		Vec2{
-			.x = 0.5 * extents_.x,
-			.y = 0.5 * extents_.y
+		glm::dvec2{
+			0.5 * extents_.x,
+			0.5 * extents_.y
 		}
 	);
 
 	children_.emplace_back(
-		Vec2{
-			.x = center_.x + 0.5 * extents_.x,
-			.y = center_.y + 0.5 * extents_.y
+		glm::dvec2{
+			center_.x + 0.5 * extents_.x,
+			center_.y + 0.5 * extents_.y
 		},
-		Vec2{
-			.x = 0.5 * extents_.x,
-			.y = 0.5 * extents_.y
+		glm::dvec2{
+			0.5 * extents_.x,
+			0.5 * extents_.y
 		}
 	);
 
 	children_.emplace_back(
-		Vec2{
-			.x = center_.x - 0.5 * extents_.x,
-			.y = center_.y - 0.5 * extents_.y
+		glm::dvec2{
+			center_.x - 0.5 * extents_.x,
+			center_.y - 0.5 * extents_.y
 		},
-		Vec2{
-			.x = 0.5 * extents_.x,
-			.y = 0.5 * extents_.y
+		glm::dvec2{
+			0.5 * extents_.x,
+			0.5 * extents_.y
 		}
 	);
 
 	children_.emplace_back(
-		Vec2{
-			.x = center_.x + 0.5 * extents_.x,
-			.y = center_.y - 0.5 * extents_.y
+		glm::dvec2{
+			center_.x + 0.5 * extents_.x,
+			center_.y - 0.5 * extents_.y
 		},
-		Vec2{
-			.x = 0.5 * extents_.x,
-			.y = 0.5 * extents_.y
+		glm::dvec2{
+			0.5 * extents_.x,
+			0.5 * extents_.y
 		}
 	);
 }
@@ -157,17 +157,17 @@ void QuadTree::CalculateMass()
 	}
 }
 
-Vec2 QuadTree::GetCenter() const
+glm::dvec2 QuadTree::GetCenter() const
 {
 	return center_;
 }
 
-Vec2 QuadTree::GetExtents() const
+glm::dvec2 QuadTree::GetExtents() const
 {
 	return extents_;
 }
 
-Vec2 QuadTree::GetCenterOfMass() const
+glm::dvec2 QuadTree::GetCenterOfMass() const
 {
 	return center_of_mass_;
 }

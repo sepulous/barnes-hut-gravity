@@ -4,13 +4,15 @@
 #include <memory>
 #include <array>
 
+#include <glm/glm.hpp>
+
 #include "helpers.h"
 
 class QuadTree
 {
 public:
 	QuadTree();
-	QuadTree(Vec2, Vec2);
+	QuadTree(glm::dvec2, glm::dvec2);
 	~QuadTree() = default;
 
 	QuadTree(const QuadTree&) = delete;
@@ -21,9 +23,9 @@ public:
 
 	void Add(Point*);
 	void CalculateMass();
-	Vec2 GetCenter() const;
-	Vec2 GetExtents() const;
-	Vec2 GetCenterOfMass() const;
+	glm::dvec2 GetCenter() const;
+	glm::dvec2 GetExtents() const;
+	glm::dvec2 GetCenterOfMass() const;
 	double GetTotalMass() const;
 	std::vector<QuadTree>& GetChildren();
 	bool HasChildren() const;
@@ -37,8 +39,8 @@ private:
 private:
 	Point* point_ = nullptr;
 	std::vector<QuadTree> children_;
-	Vec2 center_;
-	Vec2 extents_;
-	Vec2 center_of_mass_;
+	glm::dvec2 center_;
+	glm::dvec2 extents_;
+	glm::dvec2 center_of_mass_;
 	double total_mass_;
 };

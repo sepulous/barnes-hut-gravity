@@ -35,4 +35,5 @@ target_include_directories(BarnesHut PRIVATE
 	"third_party/imgui-1.92.9b"
 	"third_party/imgui-1.92.9b/backends"
 	"third_party/glad/include"
+	"third_party/glm"
 )

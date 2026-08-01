@@ -6,6 +6,8 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
+#include <glm/glm.hpp>
+
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
@@ -21,7 +23,7 @@ using namespace std::chrono_literals;
 #define MAX_STEPS 1000
 
 double rand_range(double min_inclusive, double max_inclusive);
-Vec2 GetAccelerationAtPoint(Point* point, QuadTree& tree);
+glm::dvec2 GetAccelerationAtPoint(Point* point, QuadTree& tree);
 
 constexpr size_t NUM_POINTS = 10'000;
 constexpr double TIME_STEP = 0.01;
@@ -130,8 +132,8 @@ int main()
 	{
 		points.push_back({
 			.position = {
-				.x = rand_range(-1.0, 1.0),
-				.y = rand_range(-1.0, 1.0)
+				rand_range(-1.0, 1.0),
+				rand_range(-1.0, 1.0)
 			},
 			.velocity = {0.0, 0.0},
 			.acceleration = {0.0, 0.0},
@@ -159,7 +161,7 @@ int main()
 		Point& p1 = points[i];
 
 		// Kinetic
-		initial_total_energy += 0.5 * p1.mass * p1.velocity.dot(p1.velocity);
+		initial_total_energy += 0.5 * p1.mass * glm::dot(p1.velocity, p1.velocity);
 
 		for (int j = i + 1; j < NUM_POINTS; j++)
 		{
@@ -218,16 +220,10 @@ int main()
 		for (auto& point : points)
 		{
 		#endif
-			Vec2 new_acceleration = GetAccelerationAtPoint(&point, tree);
+			glm::dvec2 new_acceleration = GetAccelerationAtPoint(&point, tree);
 
-			point.next_position = {
-				.x = point.position.x + point.velocity.x * TIME_STEP + 0.5 * point.acceleration.x * TIME_STEP_SQUARED,
-				.y = point.position.y + point.velocity.y * TIME_STEP + 0.5 * point.acceleration.y * TIME_STEP_SQUARED
-			};
-			point.velocity = {
-				.x = point.velocity.x + 0.5 * (point.acceleration.x + new_acceleration.x) * TIME_STEP,
-				.y = point.velocity.y + 0.5 * (point.acceleration.y + new_acceleration.y) * TIME_STEP
-			};
+			point.next_position = point.position + TIME_STEP * point.velocity + 0.5 * TIME_STEP_SQUARED * point.acceleration;
+			point.velocity = point.velocity + 0.5 * (point.acceleration + new_acceleration) * TIME_STEP;
 			point.acceleration = new_acceleration;
 		}
 
@@ -265,7 +261,7 @@ int main()
 		angular_momentum += p1.mass * (p1.position.x * p1.velocity.y - p1.position.y * p1.velocity.x);
 
 		// Kinetic
-		final_total_energy += 0.5 * p1.mass * p1.velocity.dot(p1.velocity);
+		final_total_energy += 0.5 * p1.mass *  glm::dot(p1.velocity, p1.velocity);
 
 		for (int j = i + 1; j < NUM_POINTS; j++)
 		{
@@ -297,11 +293,11 @@ double rand_range(double min_inclusive, double max_inclusive)
 	return dist(generator);
 }
 
-Vec2 GetAccelerationAtPoint(Point* point, QuadTree& tree)
+glm::dvec2 GetAccelerationAtPoint(Point* point, QuadTree& tree)
 {
-	Vec2 acceleration = { 0, 0 };
+	glm::dvec2 acceleration{ 0 };
 
-	Vec2 com_displacement = tree.GetCenterOfMass() - point->position;
+	glm::dvec2 com_displacement = tree.GetCenterOfMass() - point->position;
 	double com_distance = com_displacement.length();
 	double width = 2.0 * tree.GetExtents().x;
 	if ((tree.GetPoint() && tree.GetPoint() != point) || width / com_distance < THETA) // Use whole node in calculation (leaf node or sufficiently far)
