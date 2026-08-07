@@ -75,6 +75,7 @@ void QuadTree::CreateChildren()
 {
 	children_.reserve(4);
 
+	// Top left
 	children_.emplace_back(
 		glm::dvec2{
 			center_.x - 0.5 * extents_.x,
@@ -86,6 +87,7 @@ void QuadTree::CreateChildren()
 		}
 	);
 
+	// Top right
 	children_.emplace_back(
 		glm::dvec2{
 			center_.x + 0.5 * extents_.x,
@@ -97,9 +99,10 @@ void QuadTree::CreateChildren()
 		}
 	);
 
+	// Bottom right
 	children_.emplace_back(
 		glm::dvec2{
-			center_.x - 0.5 * extents_.x,
+			center_.x + 0.5 * extents_.x,
 			center_.y - 0.5 * extents_.y
 		},
 		glm::dvec2{
@@ -108,9 +111,10 @@ void QuadTree::CreateChildren()
 		}
 	);
 
+	// Bottom left
 	children_.emplace_back(
 		glm::dvec2{
-			center_.x + 0.5 * extents_.x,
+			center_.x - 0.5 * extents_.x,
 			center_.y - 0.5 * extents_.y
 		},
 		glm::dvec2{
