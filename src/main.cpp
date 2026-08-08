@@ -22,7 +22,7 @@
 
 #define RENDER 1
 #define PARALLEL 1
-#define MAX_STEPS 1000
+#define MAX_STEPS 100
 
 double rand_range(double min_inclusive, double max_inclusive);
 glm::dvec2 GetAccelerationAtParticle(Particle* point, QuadTree& tree);
@@ -259,36 +259,35 @@ double rand_range(double min_inclusive, double max_inclusive)
 glm::dvec2 GetAccelerationAtParticle(Particle* point, QuadTree& tree)
 {
 	glm::dvec2 acceleration{ 0 };
-
 	glm::dvec2 com_displacement = tree.GetCenterOfMass() - point->position;
-	double com_distance = com_displacement.length();
+	double com_distance_squared = glm::dot(com_displacement, com_displacement);
 	double width = 2.0 * tree.GetExtents().x;
-	if (width / com_distance < THETA) // Use whole node in calculation
-	{
-		double soft_inv_distance = com_distance * com_distance + SOFTENING * SOFTENING;
-		soft_inv_distance *= soft_inv_distance * soft_inv_distance;
-		soft_inv_distance = 1.0 / std::sqrt(soft_inv_distance);
-		acceleration += (G * tree.GetTotalMass() * soft_inv_distance) * com_displacement;
-	}
-	else if (tree.HasChildren()) // Internal node; look at children
-	{
-		for (auto& child : tree.GetChildren())
-			acceleration += GetAccelerationAtParticle(point, child);
-	}
-	else // Leaf node
+	if (!tree.HasChildren())
 	{
 		for (auto child : tree.GetParticles())
 		{
 			if (child != point)
 			{
 				auto displacement = child->position - point->position;
-				float distance = displacement.length();
-				double soft_inv_distance = distance * distance + SOFTENING * SOFTENING;
+				double distance_squared = glm::dot(displacement, displacement);
+				double soft_inv_distance = distance_squared + SOFTENING * SOFTENING;
 				soft_inv_distance *= soft_inv_distance * soft_inv_distance;
 				soft_inv_distance = 1.0 / std::sqrt(soft_inv_distance);
 				acceleration += (G * child->mass * soft_inv_distance) * displacement;
 			}
 		}
+	}
+	else if (width * width < com_distance_squared * THETA * THETA)
+	{
+		double soft_inv_distance = com_distance_squared + SOFTENING * SOFTENING;
+		soft_inv_distance *= soft_inv_distance * soft_inv_distance;
+		soft_inv_distance = 1.0 / std::sqrt(soft_inv_distance);
+		acceleration += (G * tree.GetTotalMass() * soft_inv_distance) * com_displacement;
+	}
+	else
+	{
+		for (auto& child : tree.GetChildren())
+			acceleration += GetAccelerationAtParticle(point, child);
 	}
 
 	return acceleration;
