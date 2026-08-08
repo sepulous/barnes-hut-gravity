@@ -4,6 +4,7 @@
 #include <thread>
 #include <chrono>
 #include <type_traits>
+#include <span>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -120,11 +121,11 @@ int main()
 	//
 	// Configuration
 	//
-	std::vector<Particle> points;
-	points.reserve(NUM_POINTS);
+	std::vector<Particle> particles;
+	particles.reserve(NUM_POINTS);
 	for (int i = 0; i < NUM_POINTS; i++)
 	{
-		points.push_back({
+		particles.push_back({
 			.position = {
 				rand_range(-1.0, 1.0),
 				rand_range(-1.0, 1.0)
@@ -133,11 +134,11 @@ int main()
 			.acceleration = {0.0, 0.0},
 			.mass = rand_range(1.0, 50.0)
 		});
-		points[i].next_position = points[i].position;
+		particles[i].next_position = particles[i].position;
 	}
 
-	QuadTree::SetMaxDepth(128);
-	QuadTree::SetLeafCapacity(8);
+	QuadTree::SetMaxDepth(16);
+	QuadTree::SetLeafCapacity(64);
 
 	long long construction_time = 0;
 	long long mass_time = 0;
@@ -164,16 +165,15 @@ int main()
 		// Update positions and construct quad tree
 		//
 		auto const_time_start = std::chrono::steady_clock::now();
-		QuadTree tree({ 0, 0 }, { 1.1, 1.1 }, 1); // centered at (0, 0), goes from (-1, -1) to (1, 1)
+		QuadTree tree(std::span<Particle>(particles.begin(), particles.end()), { 0, 0 }, { 1.1, 1.1 }, 1);
 		for (int i = 0, j = 0; i < NUM_POINTS; i++, j += 2)
 		{
-			Particle& point = points[i];
-			point.position = point.next_position;
+			Particle& particle = particles[i];
+			particle.position = particle.next_position;
 			#if RENDER
-			gpu_positions[j] = static_cast<float>(point.position.x);
-			gpu_positions[j + 1] = static_cast<float>(point.position.y);
+			gpu_positions[j] = static_cast<float>(particle.position.x);
+			gpu_positions[j + 1] = static_cast<float>(particle.position.y);
 			#endif
-			tree.Add(&point);
 		}
 		auto mass_time_start = std::chrono::steady_clock::now();
 		tree.CalculateMass();
@@ -189,16 +189,16 @@ int main()
 		#pragma omp parallel for
 		for (int i = 0; i < NUM_POINTS; i++)
 		{
-			Particle& point = points[i];
+			Particle& particle = particles[i];
 		#else
-		for (auto& point : points)
+		for (auto& particle : particles)
 		{
 		#endif
-			glm::dvec2 new_acceleration = GetAccelerationAtParticle(&point, tree);
+			glm::dvec2 new_acceleration = GetAccelerationAtParticle(&particle, tree);
 
-			point.next_position = point.position + TIME_STEP*point.velocity + 0.5*TIME_STEP_SQUARED*point.acceleration;
-			point.velocity = point.velocity + 0.5 * (point.acceleration + new_acceleration) * TIME_STEP;
-			point.acceleration = new_acceleration;
+			particle.next_position = particle.position + TIME_STEP*particle.velocity + 0.5*TIME_STEP_SQUARED*particle.acceleration;
+			particle.velocity = particle.velocity + 0.5 * (particle.acceleration + new_acceleration) * TIME_STEP;
+			particle.acceleration = new_acceleration;
 		}
 		auto int_time_end = std::chrono::steady_clock::now();
 		integration_time += (int_time_end - int_time_start).count();
@@ -237,6 +237,8 @@ int main()
 	std::cout << "    Mass Calculation: " << (mass_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(mass_time) / static_cast<double>(construction_time)) << "% of construction)" << std::endl;
 	std::cout << "Integration: " << (integration_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(integration_time) / total_time) << "%)" << std::endl;
 	std::cout << "Rendering: " << (render_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(render_time) / total_time) << "%)" << std::endl;
+
+	std::cin.get();
 
 	glfwTerminate();
 	ImGui_ImplOpenGL3_Shutdown();

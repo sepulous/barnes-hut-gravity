@@ -1,118 +1,110 @@
 #include "quad_tree.h"
 
+#include <algorithm>
+
 #define TOP_LEFT 0
 #define TOP_RIGHT 1
 #define BOTTOM_RIGHT 2
 #define BOTTOM_LEFT 3
 
-size_t QuadTree::max_depth = 128;
-size_t QuadTree::leaf_capacity = 8;
+size_t QuadTree::max_depth = 16;
+size_t QuadTree::leaf_capacity = 64;
 
-QuadTree::QuadTree(glm::dvec2 center, glm::dvec2 extents, size_t depth) : center_(center), extents_(extents), depth_(depth)
+QuadTree::QuadTree(std::span<Particle> particles, glm::dvec2 center, glm::dvec2 extents, size_t depth) : center_(center), extents_(extents), depth_(depth)
 {
 	total_mass_ = 0;
 	center_of_mass_ = { 0, 0 };
-	particles_.reserve(QuadTree::leaf_capacity);
-}
 
-void QuadTree::Add(Particle* point)
-{
-	if (HasChildren())
+	if (particles.size() <= QuadTree::leaf_capacity || depth >= QuadTree::max_depth)
 	{
-		AddToChild(point);
-	}
-	else if (particles_.size() < QuadTree::leaf_capacity || depth_ >= QuadTree::max_depth)
-	{
-		particles_.push_back(point);
+		particles_.reserve(particles.size());
+		for (auto& particle : particles)
+			particles_.push_back(&particle);
 	}
 	else
 	{
-		CreateChildren();
+		//
+		// Partition [TL|BL|TR|BR]
+		//
 
-		AddToChild(point);
+		// Partition left/right
+		auto right_half = std::partition(particles.begin(), particles.end(),
+			[this](auto& particle) { return particle.position.x < center_.x; });
 
-		for (auto particle : particles_)
-			AddToChild(particle);
-		particles_.clear();
-    }
-}
+		// Partition left top/bottom
+		auto bottom_left = std::partition(particles.begin(), right_half,
+			[this](auto& particle) { return particle.position.y >= center_.y; });
 
-void QuadTree::AddToChild(Particle* point)
-{
-	glm::dvec2 pos = point->position;
-	if (pos.x < center_.x && pos.y >= center_.y)
-	{
-		children_[TOP_LEFT].Add(point);
+		auto top_left = particles.begin();
+
+		// Partition right top/bottom
+		auto bottom_right = std::partition(right_half, particles.end(),
+			[this](auto& particle) { return particle.position.y >= center_.y; });
+
+		auto top_right = right_half;
+
+		//
+		// Create children
+		//
+
+		children_.reserve(4);
+
+		// Top left
+		children_.emplace_back(
+			std::span<Particle>(top_left, bottom_left),
+			glm::dvec2{
+				center.x - 0.5 * extents.x,
+				center.y + 0.5 * extents.y
+			},
+			glm::dvec2{
+				0.5 * extents.x,
+				0.5 * extents.y
+			},
+			depth + 1
+		);
+
+		// Top right
+		children_.emplace_back(
+			std::span<Particle>(top_right, bottom_right),
+			glm::dvec2{
+				center.x + 0.5 * extents.x,
+				center.y + 0.5 * extents.y
+			},
+			glm::dvec2{
+				0.5 * extents.x,
+				0.5 * extents.y
+			},
+			depth + 1
+		);
+
+		// Bottom right
+		children_.emplace_back(
+			std::span<Particle>(bottom_right, particles.end()),
+			glm::dvec2{
+				center.x + 0.5 * extents.x,
+				center.y - 0.5 * extents.y
+			},
+			glm::dvec2{
+				0.5 * extents.x,
+				0.5 * extents.y
+			},
+			depth + 1
+		);
+
+		// Bottom left
+		children_.emplace_back(
+			std::span<Particle>(bottom_left, right_half),
+			glm::dvec2{
+				center.x - 0.5 * extents.x,
+				center.y - 0.5 * extents.y
+			},
+			glm::dvec2{
+				0.5 * extents.x,
+				0.5 * extents.y
+			},
+			depth + 1
+		);
 	}
-	else if (pos.x >= center_.x && pos.y >= center_.y)
-	{
-		children_[TOP_RIGHT].Add(point);
-	}
-	else if (pos.x < center_.x && pos.y < center_.y)
-	{
-		children_[BOTTOM_LEFT].Add(point);
-	}
-	else
-	{
-		children_[BOTTOM_RIGHT].Add(point);
-	}
-}
-
-void QuadTree::CreateChildren()
-{
-	children_.reserve(4);
-
-	// Top left
-	children_.emplace_back(
-		glm::dvec2{
-			center_.x - 0.5 * extents_.x,
-			center_.y + 0.5 * extents_.y
-		},
-		glm::dvec2{
-			0.5 * extents_.x,
-			0.5 * extents_.y
-		},
-		depth_ + 1
-	);
-
-	// Top right
-	children_.emplace_back(
-		glm::dvec2{
-			center_.x + 0.5 * extents_.x,
-			center_.y + 0.5 * extents_.y
-		},
-		glm::dvec2{
-			0.5 * extents_.x,
-			0.5 * extents_.y
-		},
-		depth_ + 1
-	);
-
-	// Bottom right
-	children_.emplace_back(
-		glm::dvec2{
-			center_.x + 0.5 * extents_.x,
-			center_.y - 0.5 * extents_.y
-		},
-		glm::dvec2{
-			0.5 * extents_.x,
-			0.5 * extents_.y
-		},
-		depth_ + 1
-	);
-
-	// Bottom left
-	children_.emplace_back(
-		glm::dvec2{
-			center_.x - 0.5 * extents_.x,
-			center_.y - 0.5 * extents_.y
-		},
-		glm::dvec2{
-			0.5 * extents_.x,
-			0.5 * extents_.y
-		},
-		depth_ + 1
-	);
 }
 
 void QuadTree::CalculateMass()

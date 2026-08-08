@@ -4,6 +4,7 @@
 #include <memory>
 #include <array>
 #include <cstdint>
+#include <span>
 
 #include <glm/glm.hpp>
 
@@ -13,7 +14,7 @@ class QuadTree
 {
 public:
 	QuadTree() = delete;
-	QuadTree(glm::dvec2, glm::dvec2, size_t depth);
+	QuadTree(std::span<Particle> particles, glm::dvec2 center, glm::dvec2 extents, size_t depth);
 	~QuadTree() = default;
 
 	QuadTree(const QuadTree&) = delete;
@@ -22,7 +23,6 @@ public:
 	QuadTree(QuadTree&&) = default;
 	QuadTree& operator=(QuadTree&&) = default;
 
-	void Add(Particle*);
 	void CalculateMass();
 	glm::dvec2 GetCenter() const;
 	glm::dvec2 GetExtents() const;
@@ -36,10 +36,6 @@ public:
 
 	static void SetMaxDepth(size_t max_depth);
 	static void SetLeafCapacity(size_t leaf_capacity);
-
-private:
-	void AddToChild(Particle*);
-	void CreateChildren();
 
 private:
 	std::vector<Particle*> particles_;
