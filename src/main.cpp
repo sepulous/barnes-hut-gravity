@@ -2,6 +2,8 @@
 #include <vector>
 #include <random>
 #include <thread>
+#include <chrono>
+#include <type_traits>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -116,7 +118,7 @@ int main()
 	ShaderProgram shader_program(POINT_VERTEX_SHADER, POINT_FRAGMENT_SHADER);
 
 	//
-	// Initial configuration
+	// Configuration
 	//
 	std::vector<Particle> points;
 	points.reserve(NUM_POINTS);
@@ -133,6 +135,14 @@ int main()
 		});
 		points[i].next_position = points[i].position;
 	}
+
+	QuadTree::SetMaxDepth(128);
+	QuadTree::SetLeafCapacity(8);
+
+	long long construction_time = 0;
+	long long mass_time = 0;
+	long long integration_time = 0;
+	long long render_time = 0;
 
 	//
 	// Simulation
@@ -153,7 +163,8 @@ int main()
 		//
 		// Update positions and construct quad tree
 		//
-		QuadTree tree({ 0, 0 }, { 1, 1 }); // centered at (0, 0), goes from (-1, -1) to (1, 1)
+		auto const_time_start = std::chrono::steady_clock::now();
+		QuadTree tree({ 0, 0 }, { 1.1, 1.1 }, 1); // centered at (0, 0), goes from (-1, -1) to (1, 1)
 		for (int i = 0, j = 0; i < NUM_POINTS; i++, j += 2)
 		{
 			Particle& point = points[i];
@@ -164,11 +175,16 @@ int main()
 			#endif
 			tree.Add(&point);
 		}
+		auto mass_time_start = std::chrono::steady_clock::now();
 		tree.CalculateMass();
+		auto const_time_end = std::chrono::steady_clock::now();
+		construction_time += (const_time_end - const_time_start).count();
+		mass_time += (const_time_end - mass_time_start).count();
 
 		//
 		// Integrate
 		//
+		auto int_time_start = std::chrono::steady_clock::now();
 		#if PARALLEL
 		#pragma omp parallel for
 		for (int i = 0; i < NUM_POINTS; i++)
@@ -184,10 +200,12 @@ int main()
 			point.velocity = point.velocity + 0.5 * (point.acceleration + new_acceleration) * TIME_STEP;
 			point.acceleration = new_acceleration;
 		}
+		auto int_time_end = std::chrono::steady_clock::now();
+		integration_time += (int_time_end - int_time_start).count();
 
 		#if MAX_STEPS
 		step++;
-		printf("Step: %i\n", step);
+		//printf("Step: %i\n", step);
 		if (step == MAX_STEPS)
 		{
 			printf("Computed %i steps with %i particles in %f seconds\n", MAX_STEPS, NUM_POINTS, glfwGetTime() - start_time);
@@ -199,6 +217,7 @@ int main()
 		// Render
 		//
 		#if RENDER
+		auto render_time_start = std::chrono::steady_clock::now();
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		shader_program.Use();
@@ -208,8 +227,16 @@ int main()
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 		glfwSwapBuffers(window);
+		auto render_time_end = std::chrono::steady_clock::now();
+		render_time += (render_time_end - render_time_start).count();
 		#endif
 	}
+
+	double total_time = static_cast<double>(construction_time + integration_time + render_time);
+	std::cout << "Construction: " << (construction_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(construction_time) / total_time) << "%)" << std::endl;
+	std::cout << "    Mass Calculation: " << (mass_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(mass_time) / static_cast<double>(construction_time)) << "% of construction)" << std::endl;
+	std::cout << "Integration: " << (integration_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(integration_time) / total_time) << "%)" << std::endl;
+	std::cout << "Rendering: " << (render_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(render_time) / total_time) << "%)" << std::endl;
 
 	glfwTerminate();
 	ImGui_ImplOpenGL3_Shutdown();
@@ -234,7 +261,7 @@ glm::dvec2 GetAccelerationAtParticle(Particle* point, QuadTree& tree)
 	glm::dvec2 com_displacement = tree.GetCenterOfMass() - point->position;
 	double com_distance = com_displacement.length();
 	double width = 2.0 * tree.GetExtents().x;
-	if ((tree.GetParticle() && tree.GetParticle() != point) || width / com_distance < THETA) // Use whole node in calculation (leaf node or sufficiently far)
+	if (width / com_distance < THETA) // Use whole node in calculation
 	{
 		double soft_inv_distance = com_distance * com_distance + SOFTENING * SOFTENING;
 		soft_inv_distance *= soft_inv_distance * soft_inv_distance;
@@ -245,6 +272,21 @@ glm::dvec2 GetAccelerationAtParticle(Particle* point, QuadTree& tree)
 	{
 		for (auto& child : tree.GetChildren())
 			acceleration += GetAccelerationAtParticle(point, child);
+	}
+	else // Leaf node
+	{
+		for (auto child : tree.GetParticles())
+		{
+			if (child != point)
+			{
+				auto displacement = child->position - point->position;
+				float distance = displacement.length();
+				double soft_inv_distance = distance * distance + SOFTENING * SOFTENING;
+				soft_inv_distance *= soft_inv_distance * soft_inv_distance;
+				soft_inv_distance = 1.0 / std::sqrt(soft_inv_distance);
+				acceleration += (G * child->mass * soft_inv_distance) * displacement;
+			}
+		}
 	}
 
 	return acceleration;

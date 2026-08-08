@@ -5,49 +5,36 @@
 #define BOTTOM_RIGHT 2
 #define BOTTOM_LEFT 3
 
-// Invariant: A node either has a point and no children, children and no point, or neither (i.e. it never has both a point and children)
+size_t QuadTree::max_depth = 128;
+size_t QuadTree::leaf_capacity = 8;
 
-QuadTree::QuadTree()
-{
-	center_ = { 0, 0 };
-	extents_ = { 0, 0 };
-	total_mass_ = 0;
-	center_of_mass_ = { 0, 0 };
-}
-
-QuadTree::QuadTree(glm::dvec2 center, glm::dvec2 extents) : center_(center), extents_(extents)
+QuadTree::QuadTree(glm::dvec2 center, glm::dvec2 extents, size_t depth) : center_(center), extents_(extents), depth_(depth)
 {
 	total_mass_ = 0;
 	center_of_mass_ = { 0, 0 };
+	particles_.reserve(QuadTree::leaf_capacity);
 }
 
 void QuadTree::Add(Particle* point)
 {
-	glm::dvec2 pos = point->position;
-
-	if (pos.x < center_.x - extents_.x || pos.x > center_.x + extents_.x || pos.y < center_.y - extents_.y || pos.y > center_.y + extents_.y)
-		return;
-
-	if (!particle_)
+	if (HasChildren())
 	{
-		if (HasChildren())
-		{
-			AddToChild(point);
-		}
-		else
-		{
-			particle_ = point;
-		}
+		AddToChild(point);
+	}
+	else if (particles_.size() < QuadTree::leaf_capacity || depth_ >= QuadTree::max_depth)
+	{
+		particles_.push_back(point);
 	}
 	else
 	{
-		if (!HasChildren())
-			CreateChildren();
+		CreateChildren();
 
 		AddToChild(point);
-		AddToChild(particle_);
-		particle_ = nullptr;
-	}
+
+		for (auto particle : particles_)
+			AddToChild(particle);
+		particles_.clear();
+    }
 }
 
 void QuadTree::AddToChild(Particle* point)
@@ -84,7 +71,8 @@ void QuadTree::CreateChildren()
 		glm::dvec2{
 			0.5 * extents_.x,
 			0.5 * extents_.y
-		}
+		},
+		depth_ + 1
 	);
 
 	// Top right
@@ -96,7 +84,8 @@ void QuadTree::CreateChildren()
 		glm::dvec2{
 			0.5 * extents_.x,
 			0.5 * extents_.y
-		}
+		},
+		depth_ + 1
 	);
 
 	// Bottom right
@@ -108,7 +97,8 @@ void QuadTree::CreateChildren()
 		glm::dvec2{
 			0.5 * extents_.x,
 			0.5 * extents_.y
-		}
+		},
+		depth_ + 1
 	);
 
 	// Bottom left
@@ -120,45 +110,37 @@ void QuadTree::CreateChildren()
 		glm::dvec2{
 			0.5 * extents_.x,
 			0.5 * extents_.y
-		}
+		},
+		depth_ + 1
 	);
 }
 
 void QuadTree::CalculateMass()
 {
-	if (particle_) // Leaf node w/ point
-	{
-		total_mass_ = particle_->mass;
-		center_of_mass_.x = particle_->position.x;
-		center_of_mass_.y = particle_->position.y;
-	}
-	else
-	{
-		total_mass_ = 0;
-		center_of_mass_ = { 0, 0 };
-		if (HasChildren()) // Internal node
-		{
-			for (auto& child : GetChildren())
-			{
-				child.CalculateMass();
-				auto child_total_mass = child.GetTotalMass();
-				auto child_center_of_mass = child.GetCenterOfMass();
-				total_mass_ += child_total_mass;
-				center_of_mass_.x += child_total_mass * child_center_of_mass.x;
-				center_of_mass_.y += child_total_mass * child_center_of_mass.y;
-			}
+	// Assumes total_mass_ and center_of_mass_ are zero
 
-			if (total_mass_ > 0)
-			{
-				center_of_mass_.x /= total_mass_;
-				center_of_mass_.y /= total_mass_;
-			}
-		}
-		else
+	if (!HasChildren()) // Leaf node
+	{
+		for (auto particle : particles_)
 		{
-			// Empty leaf node (no mass/center of mass)
+			total_mass_ += particle->mass;
+			center_of_mass_ += particle->position;
 		}
 	}
+	else // Internal node
+	{
+		for (auto& child : GetChildren())
+		{
+			child.CalculateMass();
+			auto child_total_mass = child.GetTotalMass();
+			auto child_center_of_mass = child.GetCenterOfMass();
+			total_mass_ += child_total_mass;
+			center_of_mass_ += child_total_mass * child_center_of_mass;
+		}
+	}
+
+	if (total_mass_ > 0)
+		center_of_mass_ /= total_mass_;
 }
 
 glm::dvec2 QuadTree::GetCenter() const
@@ -191,30 +173,17 @@ bool QuadTree::HasChildren() const
 	return children_.size() == 4;
 }
 
-Particle* QuadTree::GetParticle() const
+std::vector<Particle*>& QuadTree::GetParticles()
 {
-	return particle_;
+	return particles_;
 }
 
-void QuadTree::Print(int level)
+void QuadTree::SetMaxDepth(size_t max_depth)
 {
-	for (int i = 0; i < level; i++)
-		printf("  ");
+	QuadTree::max_depth = max_depth;
+}
 
-	if (level == 0)
-		printf("Root\n");
-	else if (particle_)
-		printf("Leaf Node (pos = (%f, %f), mass = %f)\n", particle_->position.x, particle_->position.y, particle_->mass);
-	else if (!HasChildren())
-		printf("Leaf Node (empty)\n");
-	else
-		printf("Internal Node\n");
-
-	if (HasChildren())
-	{
-		for (auto& child : GetChildren())
-		{
-			child.Print(level + 1);
-		}
-	}
+void QuadTree::SetLeafCapacity(size_t leaf_capacity)
+{
+	QuadTree::leaf_capacity = leaf_capacity;
 }
