@@ -259,9 +259,7 @@ double rand_range(double min_inclusive, double max_inclusive)
 glm::dvec2 GetAccelerationAtParticle(Particle* point, QuadTree& tree)
 {
 	glm::dvec2 acceleration{ 0 };
-	glm::dvec2 com_displacement = tree.GetCenterOfMass() - point->position;
-	double com_distance_squared = glm::dot(com_displacement, com_displacement);
-	double width = 2.0 * tree.GetExtents().x;
+	
 	if (!tree.HasChildren())
 	{
 		for (auto child : tree.GetParticles())
@@ -277,17 +275,24 @@ glm::dvec2 GetAccelerationAtParticle(Particle* point, QuadTree& tree)
 			}
 		}
 	}
-	else if (width * width < com_distance_squared * THETA * THETA)
-	{
-		double soft_inv_distance = com_distance_squared + SOFTENING * SOFTENING;
-		soft_inv_distance *= soft_inv_distance * soft_inv_distance;
-		soft_inv_distance = 1.0 / std::sqrt(soft_inv_distance);
-		acceleration += (G * tree.GetTotalMass() * soft_inv_distance) * com_displacement;
-	}
 	else
 	{
-		for (auto& child : tree.GetChildren())
-			acceleration += GetAccelerationAtParticle(point, child);
+		glm::dvec2 com_displacement = tree.GetCenterOfMass() - point->position;
+		double com_distance_squared = glm::dot(com_displacement, com_displacement);
+		double width = 2.0 * tree.GetExtents().x;
+
+		if (width * width < com_distance_squared * THETA * THETA)
+		{
+			double soft_inv_distance = com_distance_squared + SOFTENING * SOFTENING;
+			soft_inv_distance *= soft_inv_distance * soft_inv_distance;
+			soft_inv_distance = 1.0 / std::sqrt(soft_inv_distance);
+			acceleration += (G * tree.GetTotalMass() * soft_inv_distance) * com_displacement;
+		}
+		else
+		{
+			for (auto& child : tree.GetChildren())
+				acceleration += GetAccelerationAtParticle(point, child);
+		}
 	}
 
 	return acceleration;
