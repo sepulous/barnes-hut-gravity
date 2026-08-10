@@ -28,7 +28,7 @@ file(GLOB IMGUI_SOURCES
 add_executable(BarnesHut
 	"src/main.cpp"
 	"src/quad_tree.cpp"
-	"src/shader_program.cpp"
+	"src/renderer.cpp"
 	"src/cuda.cu"
 
 	${IMGUI_SOURCES}

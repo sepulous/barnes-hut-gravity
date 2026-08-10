@@ -18,8 +18,7 @@
 
 #include "simulation_settings.h"
 #include "particle.h"
-#include "shaders.h"
-#include "shader_program.h"
+#include "renderer.h"
 #include "quad_tree.h"
 #include "cuda.cuh"
 
@@ -107,48 +106,10 @@ int main()
 	}
 
 	//
-	// Set up OpenGL
-	//
-
-	glEnable(GL_PROGRAM_POINT_SIZE);
-
-	GLuint particle_vbo;
-	GLuint particle_vao;
-
-	glGenVertexArrays(1, &particle_vao);
-	glBindVertexArray(particle_vao);
-
-	glCreateBuffers(1, &particle_vbo);
-	glBindBuffer(GL_ARRAY_BUFFER, particle_vbo);
-
-	glNamedBufferStorage(
-		particle_vbo,
-		settings.particle_count * (2 * sizeof(float)),
-		nullptr,
-		GL_MAP_WRITE_BIT |
-		GL_MAP_PERSISTENT_BIT |
-		GL_MAP_COHERENT_BIT
-	);
-
-	float* gpu_positions = static_cast<float*>(
-		glMapNamedBufferRange(
-			particle_vbo,
-			0,
-			settings.particle_count * (2 * sizeof(float)),
-			GL_MAP_WRITE_BIT |
-			GL_MAP_PERSISTENT_BIT |
-			GL_MAP_COHERENT_BIT
-		)
-		);
-
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
-	glEnableVertexAttribArray(0);
-
-	ShaderProgram shader_program(POINT_VERTEX_SHADER, POINT_FRAGMENT_SHADER);
-	
-	//
 	// Simulation
 	//
+
+	Renderer::Init(settings.particle_count);
 
 	float* new_accelerations = new float[2 * settings.particle_count];
 
@@ -188,12 +149,12 @@ int main()
 			Particle& particle = particles[i];
 			particle.position = particle.next_position;
 			#if RENDER
-			gpu_positions[2*i] = static_cast<float>(particle.position.x);
-			gpu_positions[2*i + 1] = static_cast<float>(particle.position.y);
+			Renderer::SetParticlePosition(i, particle.position);
 			#endif
 		}
 		QuadTree::GetPool().emplace_back(glm::dvec2{ 0, 0 }, glm::dvec2{ 1.1, 1.1 }); // TODO: Adjust size based on particle positions
 		QuadTree::GetPool()[0].Build(std::span<Particle>(particles.begin(), particles.end()));
+
 		auto mass_time_start = std::chrono::steady_clock::now();
 		QuadTree::GetPool()[0].CalculateMass();
 		auto const_time_end = std::chrono::steady_clock::now();
@@ -238,15 +199,13 @@ int main()
 
 		#if RENDER
 		auto render_time_start = std::chrono::steady_clock::now();
-		glClear(GL_COLOR_BUFFER_BIT);
 
-		shader_program.Use();
-		glBindVertexArray(particle_vao);
-		glDrawArrays(GL_POINTS, 0, settings.particle_count);
+		Renderer::Render();
 
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 		glfwSwapBuffers(window);
+
 		auto render_time_end = std::chrono::steady_clock::now();
 		render_time += (render_time_end - render_time_start).count();
 		#endif
