@@ -5,6 +5,7 @@
 #include <chrono>
 #include <type_traits>
 #include <span>
+#include <cstdint>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -19,21 +20,24 @@
 #include "shaders.h"
 #include "shader_program.h"
 #include "quad_tree.h"
+#include "cuda.cuh"
 
 #define RENDER 1
 #define PARALLEL 1
-#define MAX_STEPS 100
+#define MAX_STEPS 0
 
-double rand_range(double min_inclusive, double max_inclusive);
-glm::dvec2 GetAccelerationAtParticle(Particle* point, QuadTree& tree);
-
-constexpr size_t NUM_POINTS = 10'000;
+constexpr size_t NUM_PARTICLES = 10'000;
 constexpr double TIME_STEP = 0.01;
 constexpr double TIME_STEP_SQUARED = TIME_STEP * TIME_STEP;
 constexpr double THETA = 0.8; // width/distance threshold for quad tree cells
 constexpr double SOFTENING = 1e-3;
 constexpr double METERS_PER_UNIT = 1.0;
-constexpr double G = 100.0 * 6.67408e-11 / (METERS_PER_UNIT * METERS_PER_UNIT);
+constexpr double G = 6.67430e-11 / (METERS_PER_UNIT * METERS_PER_UNIT);
+constexpr size_t LEAF_CAPACITY = 64;
+constexpr size_t MAX_TREE_DEPTH = 8;
+
+double rand_range(double min_inclusive, double max_inclusive);
+glm::dvec2 GetAccelerationAtParticle(Particle* point, QuadTree& tree);
 
 int main()
 {
@@ -95,7 +99,7 @@ int main()
 
 	glNamedBufferStorage(
 		particle_vbo,
-		NUM_POINTS * (2 * sizeof(float)),
+		NUM_PARTICLES * (2 * sizeof(float)),
 		nullptr,
 		GL_MAP_WRITE_BIT |
 		GL_MAP_PERSISTENT_BIT |
@@ -106,7 +110,7 @@ int main()
 		glMapNamedBufferRange(
 			particle_vbo,
 			0,
-			NUM_POINTS * (2 * sizeof(float)),
+			NUM_PARTICLES * (2 * sizeof(float)),
 			GL_MAP_WRITE_BIT |
 			GL_MAP_PERSISTENT_BIT |
 			GL_MAP_COHERENT_BIT
@@ -122,8 +126,8 @@ int main()
 	// Configuration
 	//
 	std::vector<Particle> particles;
-	particles.reserve(NUM_POINTS);
-	for (int i = 0; i < NUM_POINTS; i++)
+	particles.reserve(NUM_PARTICLES);
+	for (int i = 0; i < NUM_PARTICLES; i++)
 	{
 		particles.push_back({
 			.position = {
@@ -137,11 +141,16 @@ int main()
 		particles[i].next_position = particles[i].position;
 	}
 
-	QuadTree::SetMaxDepth(16);
-	QuadTree::SetLeafCapacity(64);
+	float* new_accelerations = new float[2 * NUM_PARTICLES];
+
+	QuadTree::SetMaxDepth(MAX_TREE_DEPTH);
+	QuadTree::SetLeafCapacity(LEAF_CAPACITY);
+
+	CUDAContext cuda_context(NUM_PARTICLES, MAX_TREE_DEPTH);
 
 	long long construction_time = 0;
 	long long mass_time = 0;
+	long long acceleration_compute_time = 0;
 	long long integration_time = 0;
 	long long render_time = 0;
 
@@ -161,22 +170,25 @@ int main()
 		ImGui::NewFrame();
 		#endif
 
+		QuadTree::GetPool().clear();
+
 		//
 		// Update positions and construct quad tree
 		//
 		auto const_time_start = std::chrono::steady_clock::now();
-		QuadTree tree(std::span<Particle>(particles.begin(), particles.end()), { 0, 0 }, { 1.1, 1.1 }, 1);
-		for (int i = 0, j = 0; i < NUM_POINTS; i++, j += 2)
+		for (int i = 0; i < NUM_PARTICLES; i++)
 		{
 			Particle& particle = particles[i];
 			particle.position = particle.next_position;
 			#if RENDER
-			gpu_positions[j] = static_cast<float>(particle.position.x);
-			gpu_positions[j + 1] = static_cast<float>(particle.position.y);
+			gpu_positions[2*i] = static_cast<float>(particle.position.x);
+			gpu_positions[2*i + 1] = static_cast<float>(particle.position.y);
 			#endif
 		}
+		QuadTree::GetPool().emplace_back(glm::dvec2{ 0, 0 }, glm::dvec2{ 1.1, 1.1 }); // TODO: Adjust size based on particle positions
+		QuadTree::GetPool()[0].Build(std::span<Particle>(particles.begin(), particles.end()));
 		auto mass_time_start = std::chrono::steady_clock::now();
-		tree.CalculateMass();
+		QuadTree::GetPool()[0].CalculateMass();
 		auto const_time_end = std::chrono::steady_clock::now();
 		construction_time += (const_time_end - const_time_start).count();
 		mass_time += (const_time_end - mass_time_start).count();
@@ -184,18 +196,17 @@ int main()
 		//
 		// Integrate
 		//
-		auto int_time_start = std::chrono::steady_clock::now();
-		#if PARALLEL
-		#pragma omp parallel for
-		for (int i = 0; i < NUM_POINTS; i++)
-		{
-			Particle& particle = particles[i];
-		#else
-		for (auto& particle : particles)
-		{
-		#endif
-			glm::dvec2 new_acceleration = GetAccelerationAtParticle(&particle, tree);
+		auto accel_time_start = std::chrono::steady_clock::now();
+		ComputeAccelerations(cuda_context, particles, QuadTree::GetPool(), new_accelerations); // Blocks while GPU finishes
+		auto accel_time_end = std::chrono::steady_clock::now();
+		acceleration_compute_time += (accel_time_end - accel_time_start).count();
 
+		auto int_time_start = std::chrono::steady_clock::now();
+		#pragma omp parallel for
+		for (int i = 0; i < NUM_PARTICLES; i++)
+		{
+			glm::dvec2 new_acceleration{ new_accelerations[2*i], new_accelerations[2*i + 1] };
+			Particle& particle = particles[i];
 			particle.next_position = particle.position + TIME_STEP*particle.velocity + 0.5*TIME_STEP_SQUARED*particle.acceleration;
 			particle.velocity = particle.velocity + 0.5 * (particle.acceleration + new_acceleration) * TIME_STEP;
 			particle.acceleration = new_acceleration;
@@ -208,7 +219,7 @@ int main()
 		//printf("Step: %i\n", step);
 		if (step == MAX_STEPS)
 		{
-			printf("Computed %i steps with %i particles in %f seconds\n", MAX_STEPS, NUM_POINTS, glfwGetTime() - start_time);
+			printf("Computed %i steps with %i particles in %f seconds\n", MAX_STEPS, NUM_PARTICLES, glfwGetTime() - start_time);
 			break;
 		}
 		#endif
@@ -222,7 +233,7 @@ int main()
 
 		shader_program.Use();
 		glBindVertexArray(particle_vao);
-		glDrawArrays(GL_POINTS, 0, NUM_POINTS);
+		glDrawArrays(GL_POINTS, 0, NUM_PARTICLES);
 
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -232,9 +243,10 @@ int main()
 		#endif
 	}
 
-	double total_time = static_cast<double>(construction_time + integration_time + render_time);
+	double total_time = static_cast<double>(construction_time + integration_time + acceleration_compute_time + render_time);
 	std::cout << "Construction: " << (construction_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(construction_time) / total_time) << "%)" << std::endl;
 	std::cout << "    Mass Calculation: " << (mass_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(mass_time) / static_cast<double>(construction_time)) << "% of construction)" << std::endl;
+	std::cout << "Acceleration Computation: " << (acceleration_compute_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(acceleration_compute_time) / total_time) << "%)" << std::endl;
 	std::cout << "Integration: " << (integration_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(integration_time) / total_time) << "%)" << std::endl;
 	std::cout << "Rendering: " << (render_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(render_time) / total_time) << "%)" << std::endl;
 
@@ -256,42 +268,53 @@ double rand_range(double min_inclusive, double max_inclusive)
 	return dist(generator);
 }
 
-glm::dvec2 GetAccelerationAtParticle(Particle* point, QuadTree& tree)
+glm::dvec2 GetAccelerationAtParticle(Particle* point, QuadTree& root)
 {
 	glm::dvec2 acceleration{ 0 };
-	
-	if (!tree.HasChildren())
-	{
-		for (auto child : tree.GetParticles())
-		{
-			if (child != point)
-			{
-				auto displacement = child->position - point->position;
-				double distance_squared = glm::dot(displacement, displacement);
-				double soft_inv_distance = distance_squared + SOFTENING * SOFTENING;
-				soft_inv_distance *= soft_inv_distance * soft_inv_distance;
-				soft_inv_distance = 1.0 / std::sqrt(soft_inv_distance);
-				acceleration += (G * child->mass * soft_inv_distance) * displacement;
-			}
-		}
-	}
-	else
-	{
-		glm::dvec2 com_displacement = tree.GetCenterOfMass() - point->position;
-		double com_distance_squared = glm::dot(com_displacement, com_displacement);
-		double width = 2.0 * tree.GetExtents().x;
 
-		if (width * width < com_distance_squared * THETA * THETA)
+	std::vector<QuadTree*> stack{ &root };
+	
+	while (!stack.empty())
+	{
+		auto tree = stack.back();
+		stack.pop_back();
+
+		if (!tree->HasChildren())
 		{
-			double soft_inv_distance = com_distance_squared + SOFTENING * SOFTENING;
-			soft_inv_distance *= soft_inv_distance * soft_inv_distance;
-			soft_inv_distance = 1.0 / std::sqrt(soft_inv_distance);
-			acceleration += (G * tree.GetTotalMass() * soft_inv_distance) * com_displacement;
+			for (auto& particle : tree->GetParticles())
+			{
+				if (&particle != point)
+				{
+					auto displacement = particle.position - point->position;
+					double distance_squared = glm::dot(displacement, displacement);
+					double soft_inv_distance = distance_squared + SOFTENING * SOFTENING;
+					soft_inv_distance *= soft_inv_distance * soft_inv_distance;
+					soft_inv_distance = 1.0 / std::sqrt(soft_inv_distance);
+					acceleration += (G * particle.mass * soft_inv_distance) * displacement;
+				}
+			}
 		}
 		else
 		{
-			for (auto& child : tree.GetChildren())
-				acceleration += GetAccelerationAtParticle(point, child);
+			glm::dvec2 com_displacement = tree->GetCenterOfMass() - point->position;
+			double com_distance_squared = glm::dot(com_displacement, com_displacement);
+			double width = 2.0 * tree->GetExtents().x;
+
+			if (width * width < com_distance_squared * THETA * THETA)
+			{
+				double soft_inv_distance = com_distance_squared + SOFTENING * SOFTENING;
+				soft_inv_distance *= soft_inv_distance * soft_inv_distance;
+				soft_inv_distance = 1.0 / std::sqrt(soft_inv_distance);
+				acceleration += (G * tree->GetTotalMass() * soft_inv_distance) * com_displacement;
+			}
+			else
+			{
+				//for (auto child_index : tree->GetChildren())
+				//	acceleration += GetAccelerationAtParticle(point, QuadTree::GetPool()[child_index]);
+
+				for (auto child_index : tree->GetChildren())
+					stack.push_back(&QuadTree::GetPool()[child_index]);
+			}
 		}
 	}
 

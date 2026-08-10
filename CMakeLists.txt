@@ -29,6 +29,7 @@ add_executable(BarnesHut
 	"src/main.cpp"
 	"src/quad_tree.cpp"
 	"src/shader_program.cpp"
+	"src/cuda.cu"
 
 	${IMGUI_SOURCES}
 	"third_party/glad/src/glad.c"
@@ -43,3 +44,7 @@ target_include_directories(BarnesHut PRIVATE
 	"third_party/glad/include"
 	"third_party/glm"
 )
+
+#target_compile_options(BarnesHut PRIVATE
+#    $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-v>
+#)
