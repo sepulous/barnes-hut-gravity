@@ -16,6 +16,7 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
+#include "simulation_settings.h"
 #include "particle.h"
 #include "shaders.h"
 #include "shader_program.h"
@@ -26,14 +27,6 @@
 #define PARALLEL 1
 #define MAX_STEPS 0
 
-constexpr size_t NUM_PARTICLES = 10'000;
-constexpr double TIME_STEP = 0.01;
-constexpr double TIME_STEP_SQUARED = TIME_STEP * TIME_STEP;
-constexpr double THETA = 0.8; // width/distance threshold for quad tree cells
-constexpr double SOFTENING = 1e-3;
-constexpr size_t LEAF_CAPACITY = 64;
-constexpr size_t MAX_TREE_DEPTH = 8;
-
 double rand_range(double min_inclusive, double max_inclusive);
 
 int main()
@@ -41,6 +34,7 @@ int main()
 	//
 	// Set up GLFW window
 	//
+
 	GLFWwindow* window;
 
 	if (!glfwInit())
@@ -63,6 +57,7 @@ int main()
 	//
 	// Set up GLAD
 	//
+
 	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
 	{
 		std::cerr << "Failed to initialize GLAD\n";
@@ -72,6 +67,7 @@ int main()
 	//
 	// Set up ImGUI
 	//
+
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();
@@ -81,50 +77,22 @@ int main()
 	ImGui_ImplOpenGL3_Init("#version 460 core");
 
 	//
-	// Set up OpenGL
-	//
-	glEnable(GL_PROGRAM_POINT_SIZE);
-
-	GLuint particle_vbo;
-	GLuint particle_vao;
-
-	glGenVertexArrays(1, &particle_vao);
-	glBindVertexArray(particle_vao);
-
-	glCreateBuffers(1, &particle_vbo);
-	glBindBuffer(GL_ARRAY_BUFFER, particle_vbo);
-
-	glNamedBufferStorage(
-		particle_vbo,
-		NUM_PARTICLES * (2 * sizeof(float)),
-		nullptr,
-		GL_MAP_WRITE_BIT |
-		GL_MAP_PERSISTENT_BIT |
-		GL_MAP_COHERENT_BIT
-	);
-
-	float* gpu_positions = static_cast<float*>(
-		glMapNamedBufferRange(
-			particle_vbo,
-			0,
-			NUM_PARTICLES * (2 * sizeof(float)),
-			GL_MAP_WRITE_BIT |
-			GL_MAP_PERSISTENT_BIT |
-			GL_MAP_COHERENT_BIT
-		)
-	);
-
-	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
-	glEnableVertexAttribArray(0);
-
-	ShaderProgram shader_program(POINT_VERTEX_SHADER, POINT_FRAGMENT_SHADER);
-
-	//
 	// Configuration
 	//
+
+	SimulationSettings settings{
+		.particle_count = 10'000,
+		.leaf_capacity = 64,
+		.maximum_tree_depth = 8,
+		.threads_per_block = 256,
+		.softening = 1e-3,
+		.theta = 0.8,
+		.time_step = 0.01
+	};
+
 	std::vector<Particle> particles;
-	particles.reserve(NUM_PARTICLES);
-	for (int i = 0; i < NUM_PARTICLES; i++)
+	particles.reserve(settings.particle_count);
+	for (int i = 0; i < settings.particle_count; i++)
 	{
 		particles.push_back({
 			.position = {
@@ -138,12 +106,56 @@ int main()
 		particles[i].next_position = particles[i].position;
 	}
 
-	float* new_accelerations = new float[2 * NUM_PARTICLES];
+	//
+	// Set up OpenGL
+	//
 
-	QuadTree::SetMaxDepth(MAX_TREE_DEPTH);
-	QuadTree::SetLeafCapacity(LEAF_CAPACITY);
+	glEnable(GL_PROGRAM_POINT_SIZE);
 
-	CUDAContext cuda_context(NUM_PARTICLES, MAX_TREE_DEPTH);
+	GLuint particle_vbo;
+	GLuint particle_vao;
+
+	glGenVertexArrays(1, &particle_vao);
+	glBindVertexArray(particle_vao);
+
+	glCreateBuffers(1, &particle_vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, particle_vbo);
+
+	glNamedBufferStorage(
+		particle_vbo,
+		settings.particle_count * (2 * sizeof(float)),
+		nullptr,
+		GL_MAP_WRITE_BIT |
+		GL_MAP_PERSISTENT_BIT |
+		GL_MAP_COHERENT_BIT
+	);
+
+	float* gpu_positions = static_cast<float*>(
+		glMapNamedBufferRange(
+			particle_vbo,
+			0,
+			settings.particle_count * (2 * sizeof(float)),
+			GL_MAP_WRITE_BIT |
+			GL_MAP_PERSISTENT_BIT |
+			GL_MAP_COHERENT_BIT
+		)
+		);
+
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
+	glEnableVertexAttribArray(0);
+
+	ShaderProgram shader_program(POINT_VERTEX_SHADER, POINT_FRAGMENT_SHADER);
+	
+	//
+	// Simulation
+	//
+
+	float* new_accelerations = new float[2 * settings.particle_count];
+
+	QuadTree::SetMaxDepth(settings.maximum_tree_depth);
+	QuadTree::SetLeafCapacity(settings.leaf_capacity);
+
+	CUDAContext cuda_context(settings.particle_count, settings.maximum_tree_depth);
 
 	long long construction_time = 0;
 	long long mass_time = 0;
@@ -151,9 +163,6 @@ int main()
 	long long integration_time = 0;
 	long long render_time = 0;
 
-	//
-	// Simulation
-	//
 	#if MAX_STEPS
 	int step = 0;
 	#endif
@@ -172,8 +181,9 @@ int main()
 		//
 		// Update positions and construct quad tree
 		//
+
 		auto const_time_start = std::chrono::steady_clock::now();
-		for (int i = 0; i < NUM_PARTICLES; i++)
+		for (int i = 0; i < settings.particle_count; i++)
 		{
 			Particle& particle = particles[i];
 			particle.position = particle.next_position;
@@ -193,19 +203,20 @@ int main()
 		//
 		// Integrate
 		//
+
 		auto accel_time_start = std::chrono::steady_clock::now();
-		ComputeAccelerations(cuda_context, particles, QuadTree::GetPool(), new_accelerations); // Blocks while GPU finishes
+		ComputeAccelerations(cuda_context, particles, QuadTree::GetPool(), new_accelerations, settings.threads_per_block); // Blocks while GPU finishes
 		auto accel_time_end = std::chrono::steady_clock::now();
 		acceleration_compute_time += (accel_time_end - accel_time_start).count();
 
 		auto int_time_start = std::chrono::steady_clock::now();
 		#pragma omp parallel for
-		for (int i = 0; i < NUM_PARTICLES; i++)
+		for (int i = 0; i < settings.particle_count; i++)
 		{
 			glm::dvec2 new_acceleration{ new_accelerations[2*i], new_accelerations[2*i + 1] };
 			Particle& particle = particles[i];
-			particle.next_position = particle.position + TIME_STEP*particle.velocity + 0.5*TIME_STEP_SQUARED*particle.acceleration;
-			particle.velocity = particle.velocity + 0.5 * (particle.acceleration + new_acceleration) * TIME_STEP;
+			particle.next_position = particle.position + settings.time_step * particle.velocity + 0.5 * settings.time_step * settings.time_step * particle.acceleration;
+			particle.velocity = particle.velocity + 0.5 * (particle.acceleration + new_acceleration) * settings.time_step;
 			particle.acceleration = new_acceleration;
 		}
 		auto int_time_end = std::chrono::steady_clock::now();
@@ -224,13 +235,14 @@ int main()
 		//
 		// Render
 		//
+
 		#if RENDER
 		auto render_time_start = std::chrono::steady_clock::now();
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		shader_program.Use();
 		glBindVertexArray(particle_vao);
-		glDrawArrays(GL_POINTS, 0, NUM_PARTICLES);
+		glDrawArrays(GL_POINTS, 0, settings.particle_count);
 
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

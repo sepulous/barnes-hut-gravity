@@ -43,4 +43,4 @@ struct CUDAContext
 	CUDAContext& operator=(CUDAContext&&) = delete;
 };
 
-void ComputeAccelerations(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations);
+void ComputeAccelerations(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations, size_t threads_per_block);

@@ -81,11 +81,9 @@ __global__ void KernelComputeAccelerations(const GPUParticle* __restrict__ parti
 	accelerations[2 * particle_index + 1] = new_acceleration_y;
 }
 
-void ComputeAccelerations(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations)
+void ComputeAccelerations(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations, size_t threads_per_block)
 {
-	constexpr size_t THREADS_PER_BLOCK = 256;
-
-	size_t blocks = (particles.size() + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+	size_t blocks = (particles.size() + threads_per_block - 1) / threads_per_block;
 
 	// Move particle data to GPU
 	for (int i = 0; i < particles.size(); i++)
@@ -118,7 +116,7 @@ void ComputeAccelerations(CUDAContext& cuda_context, std::vector<Particle>& part
 		};
 	}
 
-	KernelComputeAccelerations<<<blocks, THREADS_PER_BLOCK>>>(cuda_context.particles, cuda_context.tree, cuda_context.accelerations, static_cast<uint32_t>(particles.size()));
+	KernelComputeAccelerations<<<blocks, threads_per_block>>>(cuda_context.particles, cuda_context.tree, cuda_context.accelerations, static_cast<uint32_t>(particles.size()));
 	cudaDeviceSynchronize();
 
 	cudaMemcpy(new_accelerations, cuda_context.accelerations, 2 * sizeof(float) * particles.size(), cudaMemcpyDeviceToHost);
