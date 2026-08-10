@@ -31,13 +31,10 @@ constexpr double TIME_STEP = 0.01;
 constexpr double TIME_STEP_SQUARED = TIME_STEP * TIME_STEP;
 constexpr double THETA = 0.8; // width/distance threshold for quad tree cells
 constexpr double SOFTENING = 1e-3;
-constexpr double METERS_PER_UNIT = 1.0;
-constexpr double G = 6.67430e-11 / (METERS_PER_UNIT * METERS_PER_UNIT);
 constexpr size_t LEAF_CAPACITY = 64;
 constexpr size_t MAX_TREE_DEPTH = 8;
 
 double rand_range(double min_inclusive, double max_inclusive);
-glm::dvec2 GetAccelerationAtParticle(Particle* point, QuadTree& tree);
 
 int main()
 {
@@ -266,57 +263,4 @@ double rand_range(double min_inclusive, double max_inclusive)
 	static std::mt19937_64 generator{ 69420 };
 	std::uniform_real_distribution<double> dist(min_inclusive, max_inclusive);
 	return dist(generator);
-}
-
-glm::dvec2 GetAccelerationAtParticle(Particle* point, QuadTree& root)
-{
-	glm::dvec2 acceleration{ 0 };
-
-	std::vector<QuadTree*> stack{ &root };
-	
-	while (!stack.empty())
-	{
-		auto tree = stack.back();
-		stack.pop_back();
-
-		if (!tree->HasChildren())
-		{
-			for (auto& particle : tree->GetParticles())
-			{
-				if (&particle != point)
-				{
-					auto displacement = particle.position - point->position;
-					double distance_squared = glm::dot(displacement, displacement);
-					double soft_inv_distance = distance_squared + SOFTENING * SOFTENING;
-					soft_inv_distance *= soft_inv_distance * soft_inv_distance;
-					soft_inv_distance = 1.0 / std::sqrt(soft_inv_distance);
-					acceleration += (G * particle.mass * soft_inv_distance) * displacement;
-				}
-			}
-		}
-		else
-		{
-			glm::dvec2 com_displacement = tree->GetCenterOfMass() - point->position;
-			double com_distance_squared = glm::dot(com_displacement, com_displacement);
-			double width = 2.0 * tree->GetExtents().x;
-
-			if (width * width < com_distance_squared * THETA * THETA)
-			{
-				double soft_inv_distance = com_distance_squared + SOFTENING * SOFTENING;
-				soft_inv_distance *= soft_inv_distance * soft_inv_distance;
-				soft_inv_distance = 1.0 / std::sqrt(soft_inv_distance);
-				acceleration += (G * tree->GetTotalMass() * soft_inv_distance) * com_displacement;
-			}
-			else
-			{
-				//for (auto child_index : tree->GetChildren())
-				//	acceleration += GetAccelerationAtParticle(point, QuadTree::GetPool()[child_index]);
-
-				for (auto child_index : tree->GetChildren())
-					stack.push_back(&QuadTree::GetPool()[child_index]);
-			}
-		}
-	}
-
-	return acceleration;
 }
