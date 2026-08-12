@@ -8,7 +8,7 @@ struct SimulationSettings
     size_t leaf_capacity;
     size_t maximum_tree_depth; // up to limit determined by GPU memory
     size_t threads_per_block;
-    double softening;
-    double theta;
-    double time_step;
+    float softening;
+    float theta;
+    float time_step;
 };

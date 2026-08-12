@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include <iostream>
+
 #include "cuda.cuh"
 
 #include <cuda_runtime_api.h>
@@ -14,7 +16,9 @@ constexpr float G = 6.6743e-9f;
 __global__ void KernelComputeAccelerations(const GPUParticle* __restrict__ particles,
 	                                       const GPUTreeNode* __restrict__ tree,
 	                                       float* __restrict__ accelerations,
-	                                       uint32_t num_particles)
+	                                       uint32_t num_particles,
+										   float theta,
+	                                       float softening)
 {
 	uint32_t particle_index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -40,9 +44,9 @@ __global__ void KernelComputeAccelerations(const GPUParticle* __restrict__ parti
 		float com_displacement_y = node.com_y - particle.position_y;
 		float com_distance_squared = com_displacement_x * com_displacement_x + com_displacement_y * com_displacement_y;
 
-		if (node.width * node.width < com_distance_squared * 0.64f)
+		if (node.width * node.width < com_distance_squared * theta * theta)
 		{
-			float inv_r3 = rsqrtf(com_distance_squared + 0.000001f); // 1 / sqrt(r^2 + ε^2)
+			float inv_r3 = rsqrtf(com_distance_squared + softening); // 1 / sqrt(r^2 + ε^2)
 			inv_r3 *= inv_r3 * inv_r3 * G * node.total_mass;
 			new_acceleration_x += inv_r3 * com_displacement_x;
 			new_acceleration_y += inv_r3 * com_displacement_y;
@@ -63,10 +67,10 @@ __global__ void KernelComputeAccelerations(const GPUParticle* __restrict__ parti
 
 				GPUParticle other_particle = particles[i];
 
-				float displacement_x = particle.position_x - other_particle.position_x;
-				float displacement_y = particle.position_y - other_particle.position_y;
+				float displacement_x = other_particle.position_x - particle.position_x;
+				float displacement_y = other_particle.position_y - particle.position_y;
 				float distance_squared = displacement_x * displacement_x + displacement_y * displacement_y;
-				float inv_r3 = rsqrtf(distance_squared + 0.000001f); // 1 / sqrt(r^2 + ε^2)
+				float inv_r3 = rsqrtf(distance_squared + softening); // 1 / sqrt(r^2 + ε^2)
 				inv_r3 *= inv_r3 * inv_r3 * G * not_particle * other_particle.mass;
 				new_acceleration_x += inv_r3 * displacement_x;
 				new_acceleration_y += inv_r3 * displacement_y;
@@ -78,9 +82,9 @@ __global__ void KernelComputeAccelerations(const GPUParticle* __restrict__ parti
 	accelerations[2 * particle_index + 1] = new_acceleration_y;
 }
 
-void ComputeAccelerations(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations, size_t threads_per_block)
+void ComputeAccelerations(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings)
 {
-	size_t blocks = (particles.size() + threads_per_block - 1) / threads_per_block;
+	size_t blocks = (particles.size() + settings.threads_per_block - 1) / settings.threads_per_block;
 
 	// Move particle data to GPU
 	for (int i = 0; i < particles.size(); i++)
@@ -113,7 +117,14 @@ void ComputeAccelerations(CUDAContext& cuda_context, std::vector<Particle>& part
 		};
 	}
 
-	KernelComputeAccelerations<<<blocks, threads_per_block>>>(cuda_context.particles, cuda_context.tree, cuda_context.accelerations, static_cast<uint32_t>(particles.size()));
+	KernelComputeAccelerations<<<blocks, settings.threads_per_block>>>(
+		cuda_context.particles,
+		cuda_context.tree,
+		cuda_context.accelerations,
+		static_cast<uint32_t>(particles.size()),
+		settings.theta,
+		settings.softening
+	);
 	cudaDeviceSynchronize();
 
 	cudaMemcpy(new_accelerations, cuda_context.accelerations, 2 * sizeof(float) * particles.size(), cudaMemcpyDeviceToHost);

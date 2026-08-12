@@ -44,7 +44,3 @@ target_include_directories(BarnesHut PRIVATE
 	"third_party/glad/include"
 	"third_party/glm"
 )
-
-#target_compile_options(BarnesHut PRIVATE
-#    $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-v>
-#)

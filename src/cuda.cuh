@@ -4,6 +4,7 @@
 
 #include "particle.h"
 #include "quad_tree.h"
+#include "simulation_settings.h"
 
 struct GPUParticle
 {
@@ -43,4 +44,4 @@ struct CUDAContext
 	CUDAContext& operator=(CUDAContext&&) = delete;
 };
 
-void ComputeAccelerations(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations, size_t threads_per_block);
+void ComputeAccelerations(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings);

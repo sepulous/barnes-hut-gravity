@@ -22,7 +22,6 @@
 #include "quad_tree.h"
 #include "cuda.cuh"
 
-#define RENDER 1
 #define PARALLEL 1
 #define MAX_STEPS 0
 
@@ -43,7 +42,7 @@ int main()
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	window = glfwCreateWindow(800, 800, "Barnes-Hut Gravity Simulation", NULL, NULL);
+	window = glfwCreateWindow(1280, 720, "Barnes-Hut Gravity Simulation", NULL, NULL);
 	if (!window)
 	{
 		glfwTerminate();
@@ -79,19 +78,32 @@ int main()
 	// Configuration
 	//
 
-	SimulationSettings settings{
+	const uint32_t leaf_capacity_step = 8;
+	const uint32_t maximum_tree_depth_step = 1;
+	const uint32_t threads_per_block_step = 32;
+	const float theta_min = 0;
+	const float theta_max = 2.0;
+
+	bool running = false;
+	bool reset = true;
+
+	SimulationSettings settings {
 		.particle_count = 10'000,
 		.leaf_capacity = 64,
 		.maximum_tree_depth = 8,
 		.threads_per_block = 256,
-		.softening = 1e-3,
-		.theta = 0.8,
-		.time_step = 0.01
+		.softening = 1e-6f,
+		.theta = 0.5f,
+		.time_step = 0.01f
 	};
+
+	std::vector<Particle> initial_configuration;
+	initial_configuration.reserve(settings.particle_count);
 
 	std::vector<Particle> particles;
 	particles.reserve(settings.particle_count);
-	for (int i = 0; i < settings.particle_count; i++)
+
+	for (uint64_t i = 0; i < settings.particle_count; i++)
 	{
 		particles.push_back({
 			.position = {
@@ -104,6 +116,7 @@ int main()
 		});
 		particles[i].next_position = particles[i].position;
 	}
+	initial_configuration = particles;
 
 	//
 	// Simulation
@@ -113,9 +126,6 @@ int main()
 
 	float* new_accelerations = new float[2 * settings.particle_count];
 
-	QuadTree::SetMaxDepth(settings.maximum_tree_depth);
-	QuadTree::SetLeafCapacity(settings.leaf_capacity);
-
 	CUDAContext cuda_context(settings.particle_count, settings.maximum_tree_depth);
 
 	long long construction_time = 0;
@@ -124,91 +134,166 @@ int main()
 	long long integration_time = 0;
 	long long render_time = 0;
 
-	#if MAX_STEPS
-	int step = 0;
-	#endif
+	double max_position_coord = 1.0;
+
+	uint64_t step = 0;
 	double start_time = glfwGetTime();
 	while (!glfwWindowShouldClose(window))
 	{
-		#if RENDER
 		glfwPollEvents();
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
-		#endif
 
-		QuadTree::GetPool().clear();
-
-		//
-		// Update positions and construct quad tree
-		//
-
-		auto const_time_start = std::chrono::steady_clock::now();
-		for (int i = 0; i < settings.particle_count; i++)
+		if (reset)
 		{
-			Particle& particle = particles[i];
-			particle.position = particle.next_position;
-			#if RENDER
-			Renderer::SetParticlePosition(i, particle.position);
+			particles = initial_configuration;
+			for (uint32_t i = 0; i < settings.particle_count; i++)
+				Renderer::SetParticlePosition(i, particles[i].position);
+
+			reset = false;
+		}
+
+		if (running)
+		{
+			QuadTree::GetPool().clear();
+			QuadTree::SetMaxDepth(settings.maximum_tree_depth);
+			QuadTree::SetLeafCapacity(settings.leaf_capacity);
+
+			//
+			// Update positions and construct quad tree
+			//
+
+			auto const_time_start = std::chrono::steady_clock::now();
+			for (int i = 0; i < settings.particle_count; i++)
+			{
+				Particle& particle = particles[i];
+				particle.position = particle.next_position;
+				Renderer::SetParticlePosition(i, particle.position);
+
+				max_position_coord = glm::max(max_position_coord, glm::abs(particle.position.x));
+				max_position_coord = glm::max(max_position_coord, glm::abs(particle.position.y));
+			}
+			QuadTree::GetPool().emplace_back(glm::dvec2{ 0, 0 }, glm::dvec2{ 1.1 * max_position_coord, 1.1 * max_position_coord }); // TODO: Adjust size based on particle positions
+			QuadTree::GetPool()[0].Build(std::span<Particle>(particles.begin(), particles.end()));
+
+			auto mass_time_start = std::chrono::steady_clock::now();
+			QuadTree::GetPool()[0].CalculateMass();
+			auto const_time_end = std::chrono::steady_clock::now();
+			construction_time += (const_time_end - const_time_start).count();
+			mass_time += (const_time_end - mass_time_start).count();
+
+			//
+			// Integrate
+			//
+
+			auto accel_time_start = std::chrono::steady_clock::now();
+			ComputeAccelerations(cuda_context, particles, QuadTree::GetPool(), new_accelerations, settings); // Blocks while GPU finishes
+			auto accel_time_end = std::chrono::steady_clock::now();
+			acceleration_compute_time += (accel_time_end - accel_time_start).count();
+
+			auto int_time_start = std::chrono::steady_clock::now();
+			double time_step_d = static_cast<double>(settings.time_step);
+			#pragma omp parallel for
+			for (int i = 0; i < settings.particle_count; i++)
+			{
+				glm::dvec2 new_acceleration{ new_accelerations[2 * i], new_accelerations[2 * i + 1] };
+				Particle& particle = particles[i];
+				particle.next_position = particle.position + time_step_d * particle.velocity + 0.5 * time_step_d * time_step_d * particle.acceleration;
+				particle.velocity += 0.5 * (particle.acceleration + new_acceleration) * time_step_d;
+				particle.acceleration = new_acceleration;
+			}
+			auto int_time_end = std::chrono::steady_clock::now();
+			integration_time += (int_time_end - int_time_start).count();
+
+			step++;
+			#if MAX_STEPS
+			//printf("Step: %i\n", step);
+			if (step == MAX_STEPS)
+			{
+				running = false;
+				printf("Computed %i steps with %i particles in %f seconds\n", MAX_STEPS, settings.particle_count, glfwGetTime() - start_time);
+			}
 			#endif
 		}
-		QuadTree::GetPool().emplace_back(glm::dvec2{ 0, 0 }, glm::dvec2{ 1.1, 1.1 }); // TODO: Adjust size based on particle positions
-		QuadTree::GetPool()[0].Build(std::span<Particle>(particles.begin(), particles.end()));
-
-		auto mass_time_start = std::chrono::steady_clock::now();
-		QuadTree::GetPool()[0].CalculateMass();
-		auto const_time_end = std::chrono::steady_clock::now();
-		construction_time += (const_time_end - const_time_start).count();
-		mass_time += (const_time_end - mass_time_start).count();
-
-		//
-		// Integrate
-		//
-
-		auto accel_time_start = std::chrono::steady_clock::now();
-		ComputeAccelerations(cuda_context, particles, QuadTree::GetPool(), new_accelerations, settings.threads_per_block); // Blocks while GPU finishes
-		auto accel_time_end = std::chrono::steady_clock::now();
-		acceleration_compute_time += (accel_time_end - accel_time_start).count();
-
-		auto int_time_start = std::chrono::steady_clock::now();
-		#pragma omp parallel for
-		for (int i = 0; i < settings.particle_count; i++)
-		{
-			glm::dvec2 new_acceleration{ new_accelerations[2*i], new_accelerations[2*i + 1] };
-			Particle& particle = particles[i];
-			particle.next_position = particle.position + settings.time_step * particle.velocity + 0.5 * settings.time_step * settings.time_step * particle.acceleration;
-			particle.velocity = particle.velocity + 0.5 * (particle.acceleration + new_acceleration) * settings.time_step;
-			particle.acceleration = new_acceleration;
-		}
-		auto int_time_end = std::chrono::steady_clock::now();
-		integration_time += (int_time_end - int_time_start).count();
-
-		#if MAX_STEPS
-		step++;
-		//printf("Step: %i\n", step);
-		if (step == MAX_STEPS)
-		{
-			printf("Computed %i steps with %i particles in %f seconds\n", MAX_STEPS, NUM_PARTICLES, glfwGetTime() - start_time);
-			break;
-		}
-		#endif
 
 		//
 		// Render
 		//
 
-		#if RENDER
 		auto render_time_start = std::chrono::steady_clock::now();
 
+		int control_width = static_cast<int>(0.25f * io.DisplaySize.x);
+		int view_width = static_cast<int>(io.DisplaySize.x) - control_width;
+
+		ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(control_width, io.DisplaySize.y), ImGuiCond_Always);
+
+		ImGui::Begin("Controls", 0, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+
+		if (running)
+			ImGui::BeginDisabled();
+
+		ImGui::InputScalar("Leaf Capacity", ImGuiDataType_U32, &settings.leaf_capacity, &leaf_capacity_step, &leaf_capacity_step);
+		ImGui::InputScalar("Maximum Tree Depth", ImGuiDataType_U32, &settings.maximum_tree_depth, &maximum_tree_depth_step, &maximum_tree_depth_step);
+		ImGui::InputScalar("Threads/Block", ImGuiDataType_U32, &settings.threads_per_block, &threads_per_block_step, &threads_per_block_step);
+		ImGui::InputFloat("Softening", &settings.softening, 0, 0, "%.6f");
+		ImGui::InputFloat("Theta", &settings.theta, 0.0f, 2.0f, "%.2f");
+		ImGui::InputFloat("Time Step", &settings.time_step, 0, 0, "%.6f");
+
+		if (running)
+			ImGui::EndDisabled();
+
+		if (!running)
+		{
+			if (ImGui::Button("Start"))
+				running = true;
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("Reset"))
+				reset = true;
+		}
+		else
+		{
+			if (ImGui::Button("Pause"))
+				running = false;
+
+			ImGui::SameLine();
+
+			ImGui::BeginDisabled();
+			ImGui::Button("Reset");
+			ImGui::EndDisabled();
+		}
+
+		ImGui::End();
+
+		ImGui::SetNextWindowPos(ImVec2(control_width, 0), ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(view_width, io.DisplaySize.y), ImGuiCond_Always);
+
+		ImGui::Begin("Visualization", 0, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+
+		auto avail = ImGui::GetContentRegionAvail();
+
+		Renderer::Resize(avail.x, avail.y);
 		Renderer::Render();
+
+		ImGui::Image(
+			(ImTextureID)Renderer::GetTexture(),
+			avail,
+			ImVec2(0, 1),
+			ImVec2(1, 0)
+		);
+
+		ImGui::End();
 
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-		glfwSwapBuffers(window);
 
 		auto render_time_end = std::chrono::steady_clock::now();
 		render_time += (render_time_end - render_time_start).count();
-		#endif
+
+		glfwSwapBuffers(window);
 	}
 
 	double total_time = static_cast<double>(construction_time + integration_time + acceleration_compute_time + render_time);
@@ -218,12 +303,12 @@ int main()
 	std::cout << "Integration: " << (integration_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(integration_time) / total_time) << "%)" << std::endl;
 	std::cout << "Rendering: " << (render_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(render_time) / total_time) << "%)" << std::endl;
 
-	std::cin.get();
-
 	glfwTerminate();
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
+
+	std::cin.get();
 
 	return 0;
 }

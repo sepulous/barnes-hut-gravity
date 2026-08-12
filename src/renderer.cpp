@@ -2,11 +2,15 @@
 
 #include "renderer.h"
 
+float* Renderer::positions;
 size_t Renderer::particle_count;
+GLuint Renderer::framebuffer;
+GLuint Renderer::texture;
 GLuint Renderer::shader_program;
 GLuint Renderer::particle_vao;
 GLuint Renderer::particle_vbo;
-float* Renderer::positions;
+int Renderer::width = 0;
+int Renderer::height = 0;
 
 static const char* POINT_VERTEX_SHADER = R"(
 #version 460 core
@@ -90,6 +94,26 @@ void Renderer::Init(size_t particle_count)
     }
 
     //
+    // Set up framebuffer/texture
+    //
+
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    //
     // Set up particle rendering
     //
 
@@ -134,8 +158,28 @@ void Renderer::SetParticlePosition(size_t index, const glm::dvec2& position)
 
 void Renderer::Render()
 {
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     glClear(GL_COLOR_BUFFER_BIT);
     glUseProgram(shader_program);
     glBindVertexArray(particle_vao);
     glDrawArrays(GL_POINTS, 0, particle_count);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void Renderer::Resize(int width, int height)
+{
+    if (Renderer::width != width || Renderer::height != height)
+    {
+        Renderer::width = width;
+        Renderer::height = height;
+
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+}
+
+GLuint Renderer::GetTexture()
+{
+    return texture;
 }
