@@ -9,6 +9,8 @@
 #include <cuda_runtime_api.h>
 #include <cuda/cmath>
 
+constexpr float G = 6.6743e-9f;
+
 __global__ void KernelComputeAccelerations(const GPUParticle* __restrict__ particles,
 	                                       const GPUTreeNode* __restrict__ tree,
 	                                       float* __restrict__ accelerations,
@@ -34,9 +36,26 @@ __global__ void KernelComputeAccelerations(const GPUParticle* __restrict__ parti
 		stack_head--;
 		GPUTreeNode node = tree[node_index];
 
-		// It's better to have this branch because all threads traverse the same tree in the same way,
-		// so warp divergence is minimal. Making this branchless just adds extra work.
-		if (!node.has_children)
+		float com_displacement_x = node.com_x - particle.position_x;
+		float com_displacement_y = node.com_y - particle.position_y;
+		float com_distance_squared = com_displacement_x * com_displacement_x + com_displacement_y * com_displacement_y;
+
+		if (node.width * node.width < com_distance_squared * 0.64f)
+		{
+			float inv_r3 = rsqrtf(com_distance_squared + 0.000001f); // 1 / sqrt(r^2 + ε^2)
+			inv_r3 *= inv_r3 * inv_r3 * G * node.total_mass;
+			new_acceleration_x += inv_r3 * com_displacement_x;
+			new_acceleration_y += inv_r3 * com_displacement_y;
+		}
+		else if (node.has_children)
+		{
+			stack[stack_head] = node.child_top_left;
+			stack[stack_head + 1] = node.child_top_right;
+			stack[stack_head + 2] = node.child_bottom_right;
+			stack[stack_head + 3] = node.child_bottom_left;
+			stack_head += 4;
+		}
+		else
 		{
 			for (uint32_t i = node.particles_start_index; i < node.particles_end_index; i++)
 			{
@@ -48,31 +67,9 @@ __global__ void KernelComputeAccelerations(const GPUParticle* __restrict__ parti
 				float displacement_y = particle.position_y - other_particle.position_y;
 				float distance_squared = displacement_x * displacement_x + displacement_y * displacement_y;
 				float inv_r3 = rsqrtf(distance_squared + 0.000001f); // 1 / sqrt(r^2 + ε^2)
-				inv_r3 *= inv_r3 * inv_r3 * 6.67408e-9f * not_particle * other_particle.mass;
+				inv_r3 *= inv_r3 * inv_r3 * G * not_particle * other_particle.mass;
 				new_acceleration_x += inv_r3 * displacement_x;
 				new_acceleration_y += inv_r3 * displacement_y;
-			}
-		}
-		else
-		{
-			float com_displacement_x = node.com_x - particle.position_x;
-			float com_displacement_y = node.com_y - particle.position_y;
-			float com_distance_squared = com_displacement_x * com_displacement_x + com_displacement_y * com_displacement_y;
-
-			if (node.width * node.width < com_distance_squared * 0.64f)
-			{
-				float inv_r3 = rsqrtf(com_distance_squared + 0.000001f); // 1 / sqrt(r^2 + ε^2)
-				inv_r3 *= inv_r3 * inv_r3 * 6.67408e-9f * node.total_mass;
-				new_acceleration_x += inv_r3 * com_displacement_x;
-				new_acceleration_y += inv_r3 * com_displacement_y;
-			}
-			else
-			{
-				stack[stack_head] = node.child_top_left;
-				stack[stack_head + 1] = node.child_top_right;
-				stack[stack_head + 2] = node.child_bottom_right;
-				stack[stack_head + 3] = node.child_bottom_left;
-				stack_head += 4;
 			}
 		}
 	}
