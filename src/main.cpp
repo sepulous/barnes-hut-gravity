@@ -22,9 +22,6 @@
 #include "quad_tree.h"
 #include "cuda.cuh"
 
-#define PARALLEL 1
-#define MAX_STEPS 0
-
 double rand_range(double min_inclusive, double max_inclusive);
 
 int main()
@@ -88,6 +85,7 @@ int main()
 	bool reset = true;
 
 	SimulationSettings settings {
+		.max_steps = 0,
 		.particle_count = 10'000,
 		.leaf_capacity = 64,
 		.maximum_tree_depth = 8,
@@ -136,7 +134,7 @@ int main()
 
 	double max_position_coord = 1.0;
 
-	uint64_t step = 0;
+	unsigned step = 0;
 	double start_time = glfwGetTime();
 	while (!glfwWindowShouldClose(window))
 	{
@@ -207,14 +205,11 @@ int main()
 			integration_time += (int_time_end - int_time_start).count();
 
 			step++;
-			#if MAX_STEPS
-			//printf("Step: %i\n", step);
-			if (step == MAX_STEPS)
+			if (settings.max_steps > 0 && step >= settings.max_steps)
 			{
 				running = false;
-				printf("Computed %i steps with %i particles in %f seconds\n", MAX_STEPS, settings.particle_count, glfwGetTime() - start_time);
+				printf("Computed %i steps with %i particles in %f seconds\n", settings.max_steps, settings.particle_count, glfwGetTime() - start_time);
 			}
-			#endif
 		}
 
 		//
@@ -234,6 +229,7 @@ int main()
 		if (running)
 			ImGui::BeginDisabled();
 
+		ImGui::InputScalar("Max Steps", ImGuiDataType_U32, &settings.max_steps);
 		ImGui::InputScalar("Leaf Capacity", ImGuiDataType_U32, &settings.leaf_capacity, &leaf_capacity_step, &leaf_capacity_step);
 		ImGui::InputScalar("Maximum Tree Depth", ImGuiDataType_U32, &settings.maximum_tree_depth, &maximum_tree_depth_step, &maximum_tree_depth_step);
 		ImGui::InputScalar("Threads/Block", ImGuiDataType_U32, &settings.threads_per_block, &threads_per_block_step, &threads_per_block_step);
@@ -252,7 +248,10 @@ int main()
 			ImGui::SameLine();
 
 			if (ImGui::Button("Reset"))
+			{
 				reset = true;
+				step = 0;
+			}
 		}
 		else
 		{
