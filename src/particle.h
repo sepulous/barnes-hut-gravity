@@ -4,9 +4,9 @@
 
 struct Particle
 {
-    glm::dvec2 position;
-    glm::dvec2 next_position;
-    glm::dvec2 velocity;
-    glm::dvec2 acceleration;
-    double mass;
+    glm::vec2 position;
+    glm::vec2 next_position;
+    glm::vec2 velocity;
+    glm::vec2 acceleration;
+    float mass;
 };

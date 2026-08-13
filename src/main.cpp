@@ -20,9 +20,11 @@
 #include "particle.h"
 #include "renderer.h"
 #include "quad_tree.h"
+#include "gpu_info.h"
 #include "cuda.cuh"
 
-double rand_range(double min_inclusive, double max_inclusive);
+float rand_range(float min_inclusive, float max_inclusive);
+void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings);
 
 int main()
 {
@@ -75,9 +77,11 @@ int main()
 	// Configuration
 	//
 
+	GPUInfo gpu_info = GetGPUInfo();
+
 	const uint32_t leaf_capacity_step = 8;
 	const uint32_t maximum_tree_depth_step = 1;
-	const uint32_t threads_per_block_step = 32;
+	const uint32_t threads_per_block_step = gpu_info.warp_size;
 	const float theta_min = 0;
 	const float theta_max = 2.0;
 
@@ -85,7 +89,7 @@ int main()
 	bool reset = true;
 
 	SimulationSettings settings {
-		.max_steps = 0,
+		.max_steps = 1000,
 		.particle_count = 10'000,
 		.leaf_capacity = 64,
 		.maximum_tree_depth = 8,
@@ -105,12 +109,12 @@ int main()
 	{
 		particles.push_back({
 			.position = {
-				rand_range(-1.0, 1.0),
-				rand_range(-1.0, 1.0)
+				rand_range(-1.0f, 1.0f),
+				rand_range(-1.0f, 1.0f)
 			},
-			.velocity = {0.0, 0.0},
-			.acceleration = {0.0, 0.0},
-			.mass = rand_range(1.0, 50.0)
+			.velocity = {0.0f, 0.0f},
+			.acceleration = {0.0f, 0.0f},
+			.mass = rand_range(1.0f, 50.0f)
 		});
 		particles[i].next_position = particles[i].position;
 	}
@@ -120,11 +124,13 @@ int main()
 	// Simulation
 	//
 
+	CUDAContext cuda_context;
+	if (gpu_info.cuda_supported)
+		cuda_context = CUDAContext(settings.particle_count, settings.maximum_tree_depth);
+
 	Renderer::Init(settings.particle_count);
 
 	float* new_accelerations = new float[2 * settings.particle_count];
-
-	CUDAContext cuda_context(settings.particle_count, settings.maximum_tree_depth);
 
 	long long construction_time = 0;
 	long long mass_time = 0;
@@ -132,7 +138,7 @@ int main()
 	long long integration_time = 0;
 	long long render_time = 0;
 
-	double max_position_coord = 1.0;
+	float max_position_coord = 1.0f;
 
 	unsigned step = 0;
 	double start_time = glfwGetTime();
@@ -186,19 +192,21 @@ int main()
 			//
 
 			auto accel_time_start = std::chrono::steady_clock::now();
-			ComputeAccelerations(cuda_context, particles, QuadTree::GetPool(), new_accelerations, settings); // Blocks while GPU finishes
+			if (gpu_info.cuda_supported)
+				ComputeAccelerationsCUDA(cuda_context, particles, QuadTree::GetPool(), new_accelerations, settings); // Blocks while GPU finishes
+			else
+				ComputeAccelerationsCPU(particles, QuadTree::GetPool(), new_accelerations, settings);
 			auto accel_time_end = std::chrono::steady_clock::now();
 			acceleration_compute_time += (accel_time_end - accel_time_start).count();
 
 			auto int_time_start = std::chrono::steady_clock::now();
-			double time_step_d = static_cast<double>(settings.time_step);
 			#pragma omp parallel for
 			for (int i = 0; i < settings.particle_count; i++)
 			{
-				glm::dvec2 new_acceleration{ new_accelerations[2 * i], new_accelerations[2 * i + 1] };
+				glm::vec2 new_acceleration{ new_accelerations[2 * i], new_accelerations[2 * i + 1] };
 				Particle& particle = particles[i];
-				particle.next_position = particle.position + time_step_d * particle.velocity + 0.5 * time_step_d * time_step_d * particle.acceleration;
-				particle.velocity += 0.5 * (particle.acceleration + new_acceleration) * time_step_d;
+				particle.next_position = particle.position + settings.time_step * particle.velocity + 0.5f * settings.time_step * settings.time_step * particle.acceleration;
+				particle.velocity += 0.5f * (particle.acceleration + new_acceleration) * settings.time_step;
 				particle.acceleration = new_acceleration;
 			}
 			auto int_time_end = std::chrono::steady_clock::now();
@@ -232,7 +240,8 @@ int main()
 		ImGui::InputScalar("Max Steps", ImGuiDataType_U32, &settings.max_steps);
 		ImGui::InputScalar("Leaf Capacity", ImGuiDataType_U32, &settings.leaf_capacity, &leaf_capacity_step, &leaf_capacity_step);
 		ImGui::InputScalar("Maximum Tree Depth", ImGuiDataType_U32, &settings.maximum_tree_depth, &maximum_tree_depth_step, &maximum_tree_depth_step);
-		ImGui::InputScalar("Threads/Block", ImGuiDataType_U32, &settings.threads_per_block, &threads_per_block_step, &threads_per_block_step);
+		if (gpu_info.cuda_supported)
+			ImGui::InputScalar("Threads/Block", ImGuiDataType_U32, &settings.threads_per_block, &threads_per_block_step, &threads_per_block_step);
 		ImGui::InputFloat("Softening", &settings.softening, 0, 0, "%.6f");
 		ImGui::InputFloat("Theta", &settings.theta, 0.0f, 2.0f, "%.2f");
 		ImGui::InputFloat("Time Step", &settings.time_step, 0, 0, "%.6f");
@@ -312,10 +321,63 @@ int main()
 	return 0;
 }
 
-double rand_range(double min_inclusive, double max_inclusive)
+void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings)
+{
+	constexpr float G = 6.6743e-9f;
+	const float theta_squared = settings.theta * settings.theta;
+
+	#pragma omp parallel for
+	for (int i = 0; i < particles.size(); i++)
+	{
+		const Particle& particle = particles[i];
+		glm::vec2 new_acceleration{ 0, 0 };
+
+		std::vector<uint32_t> stack{ 0 };
+		stack.reserve(3 * settings.maximum_tree_depth + 1);
+
+		while (!stack.empty())
+		{
+			uint32_t node_index = stack.back();
+			const QuadTree& node = tree[node_index];
+			stack.pop_back();
+
+			auto com_displacement = node.GetCenterOfMass() - particle.position;
+			auto com_distance_squared = glm::dot(com_displacement, com_displacement);
+			auto node_width_squared = node.GetExtents().x * node.GetExtents().x;
+
+			if (node_width_squared < com_distance_squared * theta_squared)
+			{
+				float inv_r3 = 1.0f / glm::sqrt(com_distance_squared + settings.softening);
+				inv_r3 *= inv_r3 * inv_r3 * G * node.GetTotalMass();
+				new_acceleration += inv_r3 * com_displacement;
+			}
+			else if (node.HasChildren())
+			{
+				for (auto child_index : node.GetChildren())
+					stack.push_back(child_index);
+			}
+			else
+			{
+				for (auto& other_particle : node.GetParticles())
+				{
+					auto displacement = other_particle.position - particle.position;
+					auto distance_squared = glm::dot(displacement, displacement);
+					float inv_r3 = 1.0f / glm::sqrt(distance_squared + settings.softening);
+					inv_r3 *= inv_r3 * inv_r3 * G * other_particle.mass;
+					new_acceleration += inv_r3 * displacement;
+				}
+			}
+		}
+
+		new_accelerations[2 * i] = new_acceleration.x;
+		new_accelerations[2 * i + 1] = new_acceleration.y;
+	}
+}
+
+float rand_range(float min_inclusive, float max_inclusive)
 {
 	//static std::mt19937_64 generator{ std::random_device{}() };
 	static std::mt19937_64 generator{ 69420 };
-	std::uniform_real_distribution<double> dist(min_inclusive, max_inclusive);
+	std::uniform_real_distribution<float> dist(min_inclusive, max_inclusive);
 	return dist(generator);
 }

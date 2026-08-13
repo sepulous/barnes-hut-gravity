@@ -82,7 +82,7 @@ __global__ void KernelComputeAccelerations(const GPUParticle* __restrict__ parti
 	accelerations[2 * particle_index + 1] = new_acceleration_y;
 }
 
-void ComputeAccelerations(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings)
+void ComputeAccelerationsCUDA(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings)
 {
 	size_t blocks = (particles.size() + settings.threads_per_block - 1) / settings.threads_per_block;
 

@@ -14,7 +14,7 @@ class QuadTree
 {
 public:
 	QuadTree() = delete;
-	QuadTree(glm::dvec2 center, glm::dvec2 extents, size_t depth = 0);
+	QuadTree(glm::vec2 center, glm::vec2 extents, size_t depth = 0);
 	~QuadTree() = default;
 
 	QuadTree(const QuadTree&) = delete;
@@ -26,13 +26,13 @@ public:
 	void Build(std::span<Particle> particles);
 	void CalculateMass();
 	size_t GetDepth() const;
-	glm::dvec2 GetCenter() const;
-	glm::dvec2 GetExtents() const;
-	glm::dvec2 GetCenterOfMass() const;
-	double GetTotalMass() const;
+	glm::vec2 GetCenter() const;
+	glm::vec2 GetExtents() const;
+	glm::vec2 GetCenterOfMass() const;
+	float GetTotalMass() const;
 	bool HasChildren() const;
-	std::array<uint32_t, 4>& GetChildren();
-	std::span<Particle>& GetParticles();
+	const std::array<uint32_t, 4>& GetChildren() const;
+	const std::span<Particle>& GetParticles() const;
 
 	static void SetMaxDepth(size_t max_depth);
 	static void SetLeafCapacity(size_t leaf_capacity);
@@ -41,10 +41,10 @@ public:
 private:
 	std::span<Particle> particles_;
 	std::array<uint32_t, 4> children_;
-	glm::dvec2 center_;
-	glm::dvec2 extents_;
-	glm::dvec2 center_of_mass_;
-	double total_mass_;
+	glm::vec2 center_;
+	glm::vec2 extents_;
+	glm::vec2 center_of_mass_;
+	float total_mass_;
 	size_t depth_;
 	bool has_children_ = false;
 

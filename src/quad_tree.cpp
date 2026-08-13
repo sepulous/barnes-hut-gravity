@@ -13,7 +13,7 @@ size_t QuadTree::max_depth = 8;
 size_t QuadTree::leaf_capacity = 64;
 std::vector<QuadTree> QuadTree::pool;
 
-QuadTree::QuadTree(glm::dvec2 center, glm::dvec2 extents, size_t depth) : center_(center), extents_(extents), depth_(depth)
+QuadTree::QuadTree(glm::vec2 center, glm::vec2 extents, size_t depth) : center_(center), extents_(extents), depth_(depth)
 {
 	total_mass_ = 0;
 	center_of_mass_ = { 0, 0 };
@@ -160,27 +160,27 @@ size_t QuadTree::GetDepth() const
 	return depth_;
 }
 
-glm::dvec2 QuadTree::GetCenter() const
+glm::vec2 QuadTree::GetCenter() const
 {
 	return center_;
 }
 
-glm::dvec2 QuadTree::GetExtents() const
+glm::vec2 QuadTree::GetExtents() const
 {
 	return extents_;
 }
 
-glm::dvec2 QuadTree::GetCenterOfMass() const
+glm::vec2 QuadTree::GetCenterOfMass() const
 {
 	return center_of_mass_;
 }
 
-double QuadTree::GetTotalMass() const
+float QuadTree::GetTotalMass() const
 {
 	return total_mass_;
 }
 
-std::array<uint32_t, 4>& QuadTree::GetChildren()
+const std::array<uint32_t, 4>& QuadTree::GetChildren() const
 {
 	return children_;
 }
@@ -190,7 +190,7 @@ bool QuadTree::HasChildren() const
 	return has_children_;
 }
 
-std::span<Particle>& QuadTree::GetParticles()
+const std::span<Particle>& QuadTree::GetParticles() const
 {
 	return particles_;
 }

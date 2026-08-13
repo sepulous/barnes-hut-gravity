@@ -34,14 +34,8 @@ struct CUDAContext
 	GPUParticle* particles = nullptr;
 	GPUTreeNode* tree = nullptr;
 
-	CUDAContext() = delete;
+	CUDAContext() = default;
 	CUDAContext(size_t num_particles, size_t max_tree_depth);
-
-	CUDAContext(const CUDAContext&) = default;
-	CUDAContext& operator=(const CUDAContext&) = default;
-
-	CUDAContext(CUDAContext&&) = delete;
-	CUDAContext& operator=(CUDAContext&&) = delete;
 };
 
-void ComputeAccelerations(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings);
+void ComputeAccelerationsCUDA(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings);
