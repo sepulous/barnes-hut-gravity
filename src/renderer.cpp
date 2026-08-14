@@ -17,9 +17,11 @@ static const char* POINT_VERTEX_SHADER = R"(
 
 layout(location = 0) in vec2 position;
 
+uniform float zoom;
+
 void main()
 {
-    gl_Position = vec4(position, 0.0, 1.0);
+    gl_Position = vec4(zoom * position, 0.0, 1.0);
     gl_PointSize = 3.0;
 }
 )";
@@ -172,11 +174,19 @@ void Renderer::Resize(int width, int height)
     {
         Renderer::width = width;
         Renderer::height = height;
+        float size = glm::max(width, height);
 
         glBindTexture(GL_TEXTURE_2D, texture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         glBindTexture(GL_TEXTURE_2D, 0);
+        glViewport(0, 0, width, height);
     }
+}
+
+void Renderer::SetZoom(float zoom)
+{
+    glUseProgram(shader_program);
+    glUniform1f(glGetUniformLocation(shader_program, "zoom"), zoom);
 }
 
 GLuint Renderer::GetTexture()

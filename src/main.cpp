@@ -23,6 +23,8 @@
 #include "gpu_info.h"
 #include "cuda.cuh"
 
+float zoom = 1.0f;
+
 float rand_range(float min_inclusive, float max_inclusive);
 void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings);
 
@@ -88,9 +90,19 @@ int main()
 	bool running = false;
 	bool reset = true;
 
+	glfwSetScrollCallback(window, [](GLFWwindow* window, double scroll_x, double scroll_y) {
+		int scroll = static_cast<int>(scroll_y);
+		if (scroll > 0)
+			zoom *= 1.1f;
+		else
+			zoom /= 1.1f;
+		
+		Renderer::SetZoom(zoom);
+	});
+
 	SimulationSettings settings {
 		.max_steps = 1000,
-		.particle_count = 10'000,
+		.particle_count = 4'000,
 		.leaf_capacity = 64,
 		.maximum_tree_depth = 8,
 		.threads_per_block = 256,
@@ -129,6 +141,7 @@ int main()
 		cuda_context = CUDAContext(settings.particle_count, settings.maximum_tree_depth);
 
 	Renderer::Init(settings.particle_count);
+	Renderer::SetZoom(1.0f);
 
 	float* new_accelerations = new float[2 * settings.particle_count];
 
@@ -152,7 +165,7 @@ int main()
 		if (reset)
 		{
 			particles = initial_configuration;
-			for (uint32_t i = 0; i < settings.particle_count; i++)
+			for (int i = 0; i < settings.particle_count; i++)
 				Renderer::SetParticlePosition(i, particles[i].position);
 
 			reset = false;
@@ -230,9 +243,9 @@ int main()
 		int view_width = static_cast<int>(io.DisplaySize.x) - control_width;
 
 		ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-		ImGui::SetNextWindowSize(ImVec2(control_width, io.DisplaySize.y), ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(control_width, io.DisplaySize.y), ImGuiCond_Once);
 
-		ImGui::Begin("Controls", 0, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+		ImGui::Begin("Controls", 0, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove );
 
 		if (running)
 			ImGui::BeginDisabled();
@@ -274,23 +287,25 @@ int main()
 			ImGui::EndDisabled();
 		}
 
+		control_width = static_cast<int>(ImGui::GetContentRegionAvail().x + 2 * ImGui::GetStyle().WindowPadding.x);
+		view_width = static_cast<int>(io.DisplaySize.x) - control_width;
+
 		ImGui::End();
 
 		ImGui::SetNextWindowPos(ImVec2(control_width, 0), ImGuiCond_Always);
 		ImGui::SetNextWindowSize(ImVec2(view_width, io.DisplaySize.y), ImGuiCond_Always);
 
-		ImGui::Begin("Visualization", 0, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+		ImGui::Begin("Visualization", 0, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
 
 		auto avail = ImGui::GetContentRegionAvail();
+		float size = glm::max(avail.x, avail.y);
 
 		Renderer::Resize(avail.x, avail.y);
 		Renderer::Render();
 
 		ImGui::Image(
 			(ImTextureID)Renderer::GetTexture(),
-			avail,
-			ImVec2(0, 1),
-			ImVec2(1, 0)
+			ImVec2(size, size)
 		);
 
 		ImGui::End();
@@ -299,7 +314,8 @@ int main()
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 		auto render_time_end = std::chrono::steady_clock::now();
-		render_time += (render_time_end - render_time_start).count();
+		if (running)
+			render_time += (render_time_end - render_time_start).count();
 
 		glfwSwapBuffers(window);
 	}

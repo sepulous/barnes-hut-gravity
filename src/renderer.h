@@ -12,6 +12,7 @@ public:
 	static void SetParticlePosition(size_t index, const glm::dvec2& position);
 	static void Render();
 	static void Resize(int width, int height);
+	static void SetZoom(float zoom);
 	static GLuint GetTexture();
 
 private:
