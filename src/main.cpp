@@ -241,7 +241,10 @@ int main()
 		ImGui::InputScalar("Leaf Capacity", ImGuiDataType_U32, &settings.leaf_capacity, &leaf_capacity_step, &leaf_capacity_step);
 		ImGui::InputScalar("Maximum Tree Depth", ImGuiDataType_U32, &settings.maximum_tree_depth, &maximum_tree_depth_step, &maximum_tree_depth_step);
 		if (gpu_info.cuda_supported)
+		{
 			ImGui::InputScalar("Threads/Block", ImGuiDataType_U32, &settings.threads_per_block, &threads_per_block_step, &threads_per_block_step);
+			settings.threads_per_block = glm::min(settings.threads_per_block, gpu_info.max_threads_per_block);
+		}
 		ImGui::InputFloat("Softening", &settings.softening, 0, 0, "%.6f");
 		ImGui::InputFloat("Theta", &settings.theta, 0.0f, 2.0f, "%.2f");
 		ImGui::InputFloat("Time Step", &settings.time_step, 0, 0, "%.6f");
