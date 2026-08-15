@@ -151,7 +151,7 @@ void Renderer::Init(size_t particle_count)
 	glEnableVertexAttribArray(0);
 }
 
-void Renderer::SetParticlePosition(size_t index, const glm::dvec2& position)
+void Renderer::SetParticlePosition(size_t index, const glm::vec2& position)
 {
     assert(index >= 0 && index < particle_count);
     positions[2 * index] = static_cast<float>(position.x);

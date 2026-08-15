@@ -9,7 +9,7 @@ class Renderer
 {
 public:
 	static void Init(size_t particle_count);
-	static void SetParticlePosition(size_t index, const glm::dvec2& position);
+	static void SetParticlePosition(size_t index, const glm::vec2& position);
 	static void Render();
 	static void Resize(int width, int height);
 	static void SetZoom(float zoom);
