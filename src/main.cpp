@@ -182,7 +182,7 @@ int main()
 				max_position_coord = glm::max(max_position_coord, glm::abs(particle.position.x));
 				max_position_coord = glm::max(max_position_coord, glm::abs(particle.position.y));
 			}
-			QuadTree::GetPool().emplace_back(glm::dvec2{ 0, 0 }, glm::dvec2{ 1.1 * max_position_coord, 1.1 * max_position_coord }); // TODO: Adjust size based on particle positions
+			QuadTree::GetPool().emplace_back(glm::dvec2{ 0, 0 }, 2.1f * max_position_coord);
 			QuadTree::GetPool()[0].Build(std::span<Particle>(particles.begin(), particles.end()));
 
 			Timer::Start("Mass");
@@ -358,7 +358,7 @@ void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::
 
 			auto com_displacement = node.GetCenterOfMass() - particle.position;
 			auto com_distance_squared = glm::dot(com_displacement, com_displacement);
-			auto node_width_squared = node.GetExtents().x * node.GetExtents().x;
+			auto node_width_squared = node.GetWidth() * node.GetWidth();
 
 			if (node_width_squared < com_distance_squared * theta_squared)
 			{

@@ -9,11 +9,11 @@
 #define BOTTOM_RIGHT 2
 #define BOTTOM_LEFT 3
 
-size_t QuadTree::max_depth = 8;
-size_t QuadTree::leaf_capacity = 64;
+unsigned QuadTree::max_depth = 8;
+unsigned QuadTree::leaf_capacity = 64;
 std::vector<QuadTree> QuadTree::pool;
 
-QuadTree::QuadTree(glm::vec2 center, glm::vec2 extents, size_t depth) : center_(center), extents_(extents), depth_(depth)
+QuadTree::QuadTree(glm::vec2 center, float width, unsigned depth) : center_(center), width_(width), depth_(depth)
 {
 	total_mass_ = 0;
 	center_of_mass_ = { 0, 0 };
@@ -58,19 +58,16 @@ void QuadTree::Build(std::span<Particle> particles)
 		size_t bottom_left_index = bottom_right_index + 1;
 
 		auto center = center_;
-		auto extents = extents_;
+		auto width = width_;
 		auto depth = depth_;
 
 		// Top left
 		pool.emplace_back(
 			glm::dvec2{
-				center.x - 0.5 * extents.x,
-				center.y + 0.5 * extents.y
+				center.x - 0.25 * width,
+				center.y + 0.25 * width
 			},
-			glm::dvec2{
-				0.5 * extents.x,
-				0.5 * extents.y
-			},
+			0.5 * width,
 			depth + 1
 		);
 		pool[this_index].children_[TOP_LEFT] = top_left_index;
@@ -78,13 +75,10 @@ void QuadTree::Build(std::span<Particle> particles)
 		// Top right
 		pool.emplace_back(
 			glm::dvec2{
-				center.x + 0.5 * extents.x,
-				center.y + 0.5 * extents.y
+				center.x + 0.25 * width,
+				center.y + 0.25 * width
 			},
-			glm::dvec2{
-				0.5 * extents.x,
-				0.5 * extents.y
-			},
+			0.5 * width,
 			depth + 1
 		);
 		pool[this_index].children_[TOP_RIGHT] = top_right_index;
@@ -92,13 +86,10 @@ void QuadTree::Build(std::span<Particle> particles)
 		// Bottom right
 		pool.emplace_back(
 			glm::dvec2{
-				center.x + 0.5 * extents.x,
-				center.y - 0.5 * extents.y
+				center.x + 0.25 * width,
+				center.y - 0.25 * width
 			},
-			glm::dvec2{
-				0.5 * extents.x,
-				0.5 * extents.y
-			},
+			0.5 * width,
 			depth + 1
 		);
 		pool[this_index].children_[BOTTOM_RIGHT] = bottom_right_index;
@@ -106,18 +97,13 @@ void QuadTree::Build(std::span<Particle> particles)
 		// Bottom left
 		pool.emplace_back(
 			glm::dvec2{
-				center.x - 0.5 * extents.x,
-				center.y - 0.5 * extents.y
+				center.x - 0.25 * width,
+				center.y - 0.25 * width
 			},
-			glm::dvec2{
-				0.5 * extents.x,
-				0.5 * extents.y
-			},
+			0.5 * width,
 			depth + 1
 		);
 		pool[this_index].children_[BOTTOM_LEFT] = bottom_left_index;
-
-		pool[this_index].has_children_ = true;
 
 		pool[top_left_index].Build(std::span<Particle>(top_left, bottom_left));
 		pool[top_right_index].Build(std::span<Particle>(top_right, bottom_right));
@@ -165,9 +151,9 @@ glm::vec2 QuadTree::GetCenter() const
 	return center_;
 }
 
-glm::vec2 QuadTree::GetExtents() const
+float QuadTree::GetWidth() const
 {
-	return extents_;
+	return width_;
 }
 
 glm::vec2 QuadTree::GetCenterOfMass() const
@@ -187,7 +173,7 @@ const std::array<uint32_t, 4>& QuadTree::GetChildren() const
 
 bool QuadTree::HasChildren() const
 {
-	return has_children_;
+	return children_[0] != 0;
 }
 
 const std::span<Particle>& QuadTree::GetParticles() const
@@ -195,12 +181,12 @@ const std::span<Particle>& QuadTree::GetParticles() const
 	return particles_;
 }
 
-void QuadTree::SetMaxDepth(size_t max_depth)
+void QuadTree::SetMaxDepth(unsigned max_depth)
 {
 	QuadTree::max_depth = max_depth;
 }
 
-void QuadTree::SetLeafCapacity(size_t leaf_capacity)
+void QuadTree::SetLeafCapacity(unsigned leaf_capacity)
 {
 	QuadTree::leaf_capacity = leaf_capacity;
 }

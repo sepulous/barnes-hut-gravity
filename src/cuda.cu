@@ -106,7 +106,7 @@ void ComputeAccelerationsCUDA(CUDAContext& cuda_context, std::vector<Particle>& 
 			static_cast<float>(node.GetCenterOfMass().x),
 			static_cast<float>(node.GetCenterOfMass().y),
 			static_cast<float>(node.GetTotalMass()),
-			static_cast<float>(2 * node.GetExtents().x),
+			node.GetWidth(),
 			node.GetChildren()[0],
 			node.GetChildren()[1],
 			node.GetChildren()[2],
