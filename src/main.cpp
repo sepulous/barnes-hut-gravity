@@ -21,6 +21,7 @@
 #include "renderer.h"
 #include "quad_tree.h"
 #include "gpu_info.h"
+#include "timer.h"
 #include "cuda.cuh"
 
 float zoom = 1.0f;
@@ -144,17 +145,9 @@ int main()
 	Renderer::SetZoom(1.0f);
 
 	float* new_accelerations = new float[2 * settings.particle_count];
-
-	long long construction_time = 0;
-	long long mass_time = 0;
-	long long acceleration_compute_time = 0;
-	long long integration_time = 0;
-	long long render_time = 0;
-
 	float max_position_coord = 1.0f;
 
-	unsigned step = 0;
-	double start_time = glfwGetTime();
+	unsigned long long step = 0;
 	while (!glfwWindowShouldClose(window))
 	{
 		glfwPollEvents();
@@ -181,7 +174,7 @@ int main()
 			// Update positions and construct quad tree
 			//
 
-			auto const_time_start = std::chrono::steady_clock::now();
+			Timer::Start("Construction");
 			for (int i = 0; i < settings.particle_count; i++)
 			{
 				Particle& particle = particles[i];
@@ -194,25 +187,27 @@ int main()
 			QuadTree::GetPool().emplace_back(glm::dvec2{ 0, 0 }, glm::dvec2{ 1.1 * max_position_coord, 1.1 * max_position_coord }); // TODO: Adjust size based on particle positions
 			QuadTree::GetPool()[0].Build(std::span<Particle>(particles.begin(), particles.end()));
 
-			auto mass_time_start = std::chrono::steady_clock::now();
+			Timer::Start("Mass");
 			QuadTree::GetPool()[0].CalculateMass();
-			auto const_time_end = std::chrono::steady_clock::now();
-			construction_time += (const_time_end - const_time_start).count();
-			mass_time += (const_time_end - mass_time_start).count();
+			Timer::End();
+			Timer::End();
 
 			//
-			// Integrate
+			// Compute accelerations
 			//
 
-			auto accel_time_start = std::chrono::steady_clock::now();
+			Timer::Start("Acceleration");
 			if (gpu_info.cuda_supported)
 				ComputeAccelerationsCUDA(cuda_context, particles, QuadTree::GetPool(), new_accelerations, settings); // Blocks while GPU finishes
 			else
 				ComputeAccelerationsCPU(particles, QuadTree::GetPool(), new_accelerations, settings);
-			auto accel_time_end = std::chrono::steady_clock::now();
-			acceleration_compute_time += (accel_time_end - accel_time_start).count();
+			Timer::End();
 
-			auto int_time_start = std::chrono::steady_clock::now();
+			//
+			// Integrate (velocity Verlet)
+			//
+
+			Timer::Start("Integration");
 			#pragma omp parallel for
 			for (int i = 0; i < settings.particle_count; i++)
 			{
@@ -222,22 +217,16 @@ int main()
 				particle.velocity += 0.5f * (particle.acceleration + new_acceleration) * settings.time_step;
 				particle.acceleration = new_acceleration;
 			}
-			auto int_time_end = std::chrono::steady_clock::now();
-			integration_time += (int_time_end - int_time_start).count();
+			Timer::End();
 
 			step++;
 			if (settings.max_steps > 0 && step >= settings.max_steps)
-			{
 				running = false;
-				printf("Computed %i steps with %i particles in %f seconds\n", settings.max_steps, settings.particle_count, glfwGetTime() - start_time);
-			}
 		}
 
 		//
 		// Render
 		//
-
-		auto render_time_start = std::chrono::steady_clock::now();
 
 		int control_width = static_cast<int>(0.25f * io.DisplaySize.x);
 		int view_width = static_cast<int>(io.DisplaySize.x) - control_width;
@@ -300,8 +289,14 @@ int main()
 		auto avail = ImGui::GetContentRegionAvail();
 		float size = glm::max(avail.x, avail.y);
 
+		if (running)
+			Timer::Start("Rendering");
+
 		Renderer::Resize(avail.x, avail.y);
 		Renderer::Render();
+
+		if (running)
+			Timer::End();
 
 		ImGui::Image(
 			(ImTextureID)Renderer::GetTexture(),
@@ -313,19 +308,22 @@ int main()
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-		auto render_time_end = std::chrono::steady_clock::now();
-		if (running)
-			render_time += (render_time_end - render_time_start).count();
-
 		glfwSwapBuffers(window);
 	}
 
-	double total_time = static_cast<double>(construction_time + integration_time + acceleration_compute_time + render_time);
-	std::cout << "Construction: " << (construction_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(construction_time) / total_time) << "%)" << std::endl;
-	std::cout << "    Mass Calculation: " << (mass_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(mass_time) / static_cast<double>(construction_time)) << "% of construction)" << std::endl;
-	std::cout << "Acceleration Computation: " << (acceleration_compute_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(acceleration_compute_time) / total_time) << "%)" << std::endl;
-	std::cout << "Integration: " << (integration_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(integration_time) / total_time) << "%)" << std::endl;
-	std::cout << "Rendering: " << (render_time / 1'000'000) << "ms (" << (100.0 * static_cast<double>(render_time) / total_time) << "%)" << std::endl;
+	auto construction_time = Timer::GetElapsed<std::chrono::milliseconds>("Construction");
+	auto mass_time = Timer::GetElapsed<std::chrono::milliseconds>("Mass");
+	auto integration_time = Timer::GetElapsed<std::chrono::milliseconds>("Integration");
+	auto acceleration_time = Timer::GetElapsed<std::chrono::milliseconds>("Acceleration");
+	auto render_time = Timer::GetElapsed<std::chrono::milliseconds>("Rendering");
+
+	double total_time = static_cast<double>(construction_time + integration_time + acceleration_time + render_time);
+	std::cout << "Computed " << step << " steps for " << particles.size() << " particles in " << (total_time / 1'000.0) << "s" << std::endl;
+	std::cout << "Construction: " << construction_time << "ms (" << (100.0 * static_cast<double>(construction_time) / total_time) << "%)" << std::endl;
+	std::cout << "    Mass Calculation: " << mass_time << "ms (" << (100.0 * static_cast<double>(mass_time) / static_cast<double>(construction_time)) << "% of construction)" << std::endl;
+	std::cout << "Acceleration Computation: " << acceleration_time << "ms (" << (100.0 * static_cast<double>(acceleration_time) / total_time) << "%)" << std::endl;
+	std::cout << "Integration: " << integration_time << "ms (" << (100.0 * static_cast<double>(integration_time) / total_time) << "%)" << std::endl;
+	std::cout << "Rendering: " << render_time << "ms (" << (100.0 * static_cast<double>(render_time) / total_time) << "%)" << std::endl;
 
 	glfwTerminate();
 	ImGui_ImplOpenGL3_Shutdown();

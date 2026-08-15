@@ -30,6 +30,7 @@ add_executable(BarnesHut
 	"src/quad_tree.cpp"
 	"src/renderer.cpp"
 	"src/gpu_info.cpp"
+	"src/timer.cpp"
 	"src/cuda.cu"
 
 	${IMGUI_SOURCES}
