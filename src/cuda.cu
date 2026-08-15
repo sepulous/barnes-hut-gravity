@@ -44,7 +44,7 @@ __global__ void KernelComputeAccelerations(const GPUParticle* __restrict__ parti
 		float com_displacement_y = node.com_y - particle.position_y;
 		float com_distance_squared = com_displacement_x * com_displacement_x + com_displacement_y * com_displacement_y;
 
-		if (node.width * node.width < com_distance_squared * theta * theta)
+		if (node.width_squared < com_distance_squared * theta * theta)
 		{
 			float inv_r3 = rsqrtf(com_distance_squared + softening); // 1 / sqrt(r^2 + ε^2)
 			inv_r3 *= inv_r3 * inv_r3 * G * node.total_mass;
@@ -91,9 +91,9 @@ void ComputeAccelerationsCUDA(CUDAContext& cuda_context, std::vector<Particle>& 
 	{
 		Particle& particle = particles[i];
 		cuda_context.particles[i] = GPUParticle {
-			static_cast<float>(particle.position.x),
-			static_cast<float>(particle.position.y),
-			static_cast<float>(particle.mass)
+			particle.position.x,
+			particle.position.y,
+			particle.mass
 		};
 	}
 
@@ -103,10 +103,10 @@ void ComputeAccelerationsCUDA(CUDAContext& cuda_context, std::vector<Particle>& 
 		QuadTree& node = tree[i];
 		auto& node_particles = node.GetParticles();
 		cuda_context.tree[i] = GPUTreeNode{
-			static_cast<float>(node.GetCenterOfMass().x),
-			static_cast<float>(node.GetCenterOfMass().y),
-			static_cast<float>(node.GetTotalMass()),
-			node.GetWidth(),
+			node.GetCenterOfMass().x,
+			node.GetCenterOfMass().y,
+			node.GetTotalMass(),
+			node.GetWidth() * node.GetWidth(),
 			node.GetChildren()[0],
 			node.GetChildren()[1],
 			node.GetChildren()[2],

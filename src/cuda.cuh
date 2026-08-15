@@ -18,7 +18,7 @@ struct GPUTreeNode
 	float com_x;
 	float com_y;
 	float total_mass;
-	float width;
+	float width_squared;
 	uint32_t child_top_left;
 	uint32_t child_top_right;
 	uint32_t child_bottom_right;
