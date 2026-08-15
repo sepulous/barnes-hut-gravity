@@ -118,7 +118,7 @@ int main()
 	std::vector<Particle> particles;
 	particles.reserve(settings.particle_count);
 
-	for (uint64_t i = 0; i < settings.particle_count; i++)
+	for (int i = 0; i < settings.particle_count; i++)
 	{
 		particles.push_back({
 			.position = {
@@ -129,7 +129,6 @@ int main()
 			.acceleration = {0.0f, 0.0f},
 			.mass = rand_range(1.0f, 50.0f)
 		});
-		particles[i].next_position = particles[i].position;
 	}
 	initial_configuration = particles;
 
@@ -178,7 +177,6 @@ int main()
 			for (int i = 0; i < settings.particle_count; i++)
 			{
 				Particle& particle = particles[i];
-				particle.position = particle.next_position;
 				Renderer::SetParticlePosition(i, particle.position);
 
 				max_position_coord = glm::max(max_position_coord, glm::abs(particle.position.x));
@@ -213,7 +211,7 @@ int main()
 			{
 				glm::vec2 new_acceleration{ new_accelerations[2 * i], new_accelerations[2 * i + 1] };
 				Particle& particle = particles[i];
-				particle.next_position = particle.position + settings.time_step * particle.velocity + 0.5f * settings.time_step * settings.time_step * particle.acceleration;
+				particle.position += settings.time_step * particle.velocity + 0.5f * settings.time_step * settings.time_step * particle.acceleration;
 				particle.velocity += 0.5f * (particle.acceleration + new_acceleration) * settings.time_step;
 				particle.acceleration = new_acceleration;
 			}
