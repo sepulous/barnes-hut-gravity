@@ -17,6 +17,7 @@
 #include "imgui_impl_opengl3.h"
 
 #include "simulation_settings.h"
+#include "configuration.h"
 #include "particle.h"
 #include "renderer.h"
 #include "quad_tree.h"
@@ -26,7 +27,6 @@
 
 float zoom = 1.0f;
 
-float rand_range(float min_inclusive, float max_inclusive);
 void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings);
 
 int main()
@@ -53,6 +53,16 @@ int main()
 
 	glfwMakeContextCurrent(window);
 	glfwSwapInterval(0);
+
+	glfwSetScrollCallback(window, [](GLFWwindow* window, double scroll_x, double scroll_y) {
+		int scroll = static_cast<int>(scroll_y);
+		if (scroll > 0)
+			zoom *= 1.1f;
+		else
+			zoom /= 1.1f;
+
+		Renderer::SetZoom(zoom);
+	});
 
 	//
 	// Set up GLAD
@@ -91,19 +101,8 @@ int main()
 	bool running = false;
 	bool reset = true;
 
-	glfwSetScrollCallback(window, [](GLFWwindow* window, double scroll_x, double scroll_y) {
-		int scroll = static_cast<int>(scroll_y);
-		if (scroll > 0)
-			zoom *= 1.1f;
-		else
-			zoom /= 1.1f;
-		
-		Renderer::SetZoom(zoom);
-	});
-
 	SimulationSettings settings {
-		.max_steps = 1000,
-		.particle_count = 4'000,
+		.max_steps = 0,
 		.leaf_capacity = 64,
 		.maximum_tree_depth = 8,
 		.threads_per_block = 256,
@@ -112,25 +111,9 @@ int main()
 		.time_step = 0.01f
 	};
 
-	std::vector<Particle> initial_configuration;
-	initial_configuration.reserve(settings.particle_count);
-
-	std::vector<Particle> particles;
-	particles.reserve(settings.particle_count);
-
-	for (int i = 0; i < settings.particle_count; i++)
-	{
-		particles.push_back({
-			.position = {
-				rand_range(-1.0f, 1.0f),
-				rand_range(-1.0f, 1.0f)
-			},
-			.velocity = {0.0f, 0.0f},
-			.acceleration = {0.0f, 0.0f},
-			.mass = rand_range(1.0f, 50.0f)
-		});
-	}
-	initial_configuration = particles;
+	ConfigurationType configuration_type = ConfigurationType::UNIFORM_SQUARE;
+	std::vector<Particle> initial_configuration = Configuration::Generate(configuration_type, 10'000);
+	std::vector<Particle> particles = initial_configuration;
 
 	//
 	// Simulation
@@ -138,12 +121,12 @@ int main()
 
 	CUDAContext cuda_context;
 	if (gpu_info.cuda_supported)
-		cuda_context = CUDAContext(settings.particle_count, settings.maximum_tree_depth);
+		cuda_context = CUDAContext(particles.size(), settings.maximum_tree_depth);
 
-	Renderer::Init(settings.particle_count);
+	Renderer::Init(particles.size());
 	Renderer::SetZoom(1.0f);
 
-	float* new_accelerations = new float[2 * settings.particle_count];
+	float* new_accelerations = new float[2 * particles.size()];
 	float max_position_coord = 1.0f;
 
 	unsigned long long step = 0;
@@ -156,8 +139,11 @@ int main()
 
 		if (reset)
 		{
+			if (initial_configuration.size() != particles.size())
+				Renderer::SetParticleCount(initial_configuration.size());
+
 			particles = initial_configuration;
-			for (int i = 0; i < settings.particle_count; i++)
+			for (int i = 0; i < particles.size(); i++)
 				Renderer::SetParticlePosition(i, particles[i].position);
 
 			reset = false;
@@ -174,9 +160,10 @@ int main()
 			//
 
 			Timer::Start("Construction");
-			for (int i = 0; i < settings.particle_count; i++)
+			for (int i = 0; i < particles.size(); i++)
 			{
 				Particle& particle = particles[i];
+				particle.position += particle.velocity * settings.time_step + 0.5f * particle.acceleration * settings.time_step * settings.time_step;
 				Renderer::SetParticlePosition(i, particle.position);
 
 				max_position_coord = glm::max(max_position_coord, glm::abs(particle.position.x));
@@ -207,11 +194,10 @@ int main()
 
 			Timer::Start("Integration");
 			#pragma omp parallel for
-			for (int i = 0; i < settings.particle_count; i++)
+			for (int i = 0; i < particles.size(); i++)
 			{
 				glm::vec2 new_acceleration{ new_accelerations[2 * i], new_accelerations[2 * i + 1] };
 				Particle& particle = particles[i];
-				particle.position += settings.time_step * particle.velocity + 0.5f * settings.time_step * settings.time_step * particle.acceleration;
 				particle.velocity += 0.5f * (particle.acceleration + new_acceleration) * settings.time_step;
 				particle.acceleration = new_acceleration;
 			}
@@ -223,7 +209,7 @@ int main()
 		}
 
 		//
-		// Render
+		// UI/Visualization
 		//
 
 		int control_width = static_cast<int>(0.25f * io.DisplaySize.x);
@@ -232,7 +218,9 @@ int main()
 		ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
 		ImGui::SetNextWindowSize(ImVec2(control_width, io.DisplaySize.y), ImGuiCond_Once);
 
-		ImGui::Begin("Controls", 0, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove );
+		ImGui::Begin("Controls", 0, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
+
+		ImGui::Text("Simulation Parameters");
 
 		if (running)
 			ImGui::BeginDisabled();
@@ -248,6 +236,32 @@ int main()
 		ImGui::InputFloat("Softening", &settings.softening, 0, 0, "%.6f");
 		ImGui::InputFloat("Theta", &settings.theta, 0.0f, 2.0f, "%.2f");
 		ImGui::InputFloat("Time Step", &settings.time_step, 0, 0, "%.6f");
+
+		ImGui::Text("Initial Configuration");
+
+		auto current_config = Configuration::TypeToName(configuration_type);
+		if (ImGui::BeginCombo("##combo", current_config))
+		{
+			for (auto config_name : Configuration::GetNames())
+			{
+				bool already_selected = (current_config == config_name);
+
+				if (ImGui::Selectable(config_name, already_selected))
+				{
+					current_config = config_name;
+					if (!already_selected) // Just changed configuration
+					{
+						reset = true;
+						configuration_type = Configuration::NameToType(config_name);
+						initial_configuration = Configuration::Generate(configuration_type);
+					}
+				}
+
+				if (already_selected)
+					ImGui::SetItemDefaultFocus();
+			}
+			ImGui::EndCombo();
+		}
 
 		if (running)
 			ImGui::EndDisabled();
@@ -285,7 +299,7 @@ int main()
 		ImGui::SetNextWindowPos(ImVec2(control_width, 0), ImGuiCond_Always);
 		ImGui::SetNextWindowSize(ImVec2(view_width, io.DisplaySize.y), ImGuiCond_Always);
 
-		ImGui::Begin("Visualization", 0, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
+		ImGui::Begin("Visualization", 0, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
 		auto avail = ImGui::GetContentRegionAvail();
 		float size = glm::max(avail.x, avail.y);
@@ -368,8 +382,10 @@ void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::
 			}
 			else if (node.HasChildren())
 			{
-				for (auto child_index : node.GetChildren())
-					stack.push_back(child_index);
+				stack.push_back(node.GetFirstChildIndex());
+				stack.push_back(node.GetFirstChildIndex() + 1);
+				stack.push_back(node.GetFirstChildIndex() + 2);
+				stack.push_back(node.GetFirstChildIndex() + 3);
 			}
 			else
 			{
@@ -387,12 +403,4 @@ void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::
 		new_accelerations[2 * i] = new_acceleration.x;
 		new_accelerations[2 * i + 1] = new_acceleration.y;
 	}
-}
-
-float rand_range(float min_inclusive, float max_inclusive)
-{
-	//static std::mt19937_64 generator{ std::random_device{}() };
-	static std::mt19937_64 generator{ 69420 };
-	std::uniform_real_distribution<float> dist(min_inclusive, max_inclusive);
-	return dist(generator);
 }

@@ -158,6 +158,35 @@ void Renderer::SetParticlePosition(size_t index, const glm::vec2& position)
     positions[2 * index + 1] = static_cast<float>(position.y);
 }
 
+void Renderer::SetParticleCount(size_t new_count)
+{
+    if (new_count > particle_count)
+    {
+        GLuint new_vbo;
+        glCreateBuffers(1, &new_vbo);
+
+        glNamedBufferStorage(
+            new_vbo,
+            new_count,
+            nullptr,
+            GL_DYNAMIC_STORAGE_BIT
+        );
+
+        glCopyNamedBufferSubData(
+            particle_vbo,
+            new_vbo,
+            0,
+            0,
+            particle_count
+        );
+
+        glDeleteBuffers(1, &particle_vbo);
+        particle_vbo = new_vbo;
+    }
+
+    particle_count = new_count;
+}
+
 void Renderer::Render()
 {
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
