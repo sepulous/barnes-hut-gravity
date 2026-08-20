@@ -10,12 +10,10 @@
 
 #include "particle.h"
 
-class QuadTree // 64 bytes (originally)
+class QuadTree
 {
 public:
-	QuadTree() = delete;
 	QuadTree(glm::vec2 center, float width, unsigned depth = 0);
-	~QuadTree() = default;
 
 	QuadTree(const QuadTree&) = delete;
 	QuadTree& operator=(const QuadTree&) = delete;
@@ -31,7 +29,7 @@ public:
 	glm::vec2 GetCenterOfMass() const;
 	float GetTotalMass() const;
 	bool HasChildren() const;
-	const std::array<uint32_t, 4>& GetChildren() const;
+	unsigned GetFirstChildIndex() const;
 	const std::span<Particle>& GetParticles() const;
 
 	static void SetMaxDepth(unsigned max_depth);
@@ -40,9 +38,9 @@ public:
 
 private:
 	std::span<Particle> particles_;
-	std::array<uint32_t, 4> children_{ 0,0,0,0 };
 	glm::vec2 center_;
 	glm::vec2 center_of_mass_;
+	unsigned first_child_index_; // Children are contiguous in memory, so this is sufficient
 	float width_;
 	float total_mass_;
 	unsigned depth_;

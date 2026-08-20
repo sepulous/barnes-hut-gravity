@@ -17,6 +17,7 @@ QuadTree::QuadTree(glm::vec2 center, float width, unsigned depth) : center_(cent
 {
 	total_mass_ = 0;
 	center_of_mass_ = { 0, 0 };
+	first_child_index_ = 0;
 }
 
 void QuadTree::Build(std::span<Particle> particles)
@@ -52,11 +53,7 @@ void QuadTree::Build(std::span<Particle> particles)
 		//
 
 		size_t this_index = static_cast<size_t>(this - pool.data());
-		size_t top_left_index = pool.size();
-		size_t top_right_index = top_left_index + 1;
-		size_t bottom_right_index = top_right_index + 1;
-		size_t bottom_left_index = bottom_right_index + 1;
-
+		unsigned first_child_index = pool.size();
 		auto center = center_;
 		auto width = width_;
 		auto depth = depth_;
@@ -70,7 +67,7 @@ void QuadTree::Build(std::span<Particle> particles)
 			0.5 * width,
 			depth + 1
 		);
-		pool[this_index].children_[TOP_LEFT] = top_left_index;
+		pool[this_index].first_child_index_ = first_child_index;
 
 		// Top right
 		pool.emplace_back(
@@ -81,7 +78,6 @@ void QuadTree::Build(std::span<Particle> particles)
 			0.5 * width,
 			depth + 1
 		);
-		pool[this_index].children_[TOP_RIGHT] = top_right_index;
 
 		// Bottom right
 		pool.emplace_back(
@@ -92,7 +88,6 @@ void QuadTree::Build(std::span<Particle> particles)
 			0.5 * width,
 			depth + 1
 		);
-		pool[this_index].children_[BOTTOM_RIGHT] = bottom_right_index;
 
 		// Bottom left
 		pool.emplace_back(
@@ -103,12 +98,11 @@ void QuadTree::Build(std::span<Particle> particles)
 			0.5 * width,
 			depth + 1
 		);
-		pool[this_index].children_[BOTTOM_LEFT] = bottom_left_index;
 
-		pool[top_left_index].Build(std::span<Particle>(top_left, bottom_left));
-		pool[top_right_index].Build(std::span<Particle>(top_right, bottom_right));
-		pool[bottom_right_index].Build(std::span<Particle>(bottom_right, particles.end()));
-		pool[bottom_left_index].Build(std::span<Particle>(bottom_left, right_half));
+		pool[first_child_index].Build(std::span<Particle>(top_left, bottom_left));
+		pool[first_child_index + 1].Build(std::span<Particle>(top_right, bottom_right));
+		pool[first_child_index + 2].Build(std::span<Particle>(bottom_right, particles.end()));
+		pool[first_child_index + 3].Build(std::span<Particle>(bottom_left, right_half));
 	}
 }
 
@@ -126,7 +120,7 @@ void QuadTree::CalculateMass()
 	}
 	else // Internal node
 	{
-		for (auto child_index : GetChildren())
+		for (auto child_index = first_child_index_; child_index < first_child_index_ + 4; child_index++)
 		{
 			auto& child = pool[child_index];
 			child.CalculateMass();
@@ -166,14 +160,14 @@ float QuadTree::GetTotalMass() const
 	return total_mass_;
 }
 
-const std::array<uint32_t, 4>& QuadTree::GetChildren() const
+unsigned QuadTree::GetFirstChildIndex() const
 {
-	return children_;
+	return first_child_index_;
 }
 
 bool QuadTree::HasChildren() const
 {
-	return children_[0] != 0;
+	return first_child_index_ != 0;
 }
 
 const std::span<Particle>& QuadTree::GetParticles() const

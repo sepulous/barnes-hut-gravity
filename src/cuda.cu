@@ -53,10 +53,10 @@ __global__ void KernelComputeAccelerations(const GPUParticle* __restrict__ parti
 		}
 		else if (node.has_children)
 		{
-			stack[stack_head] = node.child_top_left;
-			stack[stack_head + 1] = node.child_top_right;
-			stack[stack_head + 2] = node.child_bottom_right;
-			stack[stack_head + 3] = node.child_bottom_left;
+			stack[stack_head] = node.first_child_index;
+			stack[stack_head + 1] = node.first_child_index + 1;
+			stack[stack_head + 2] = node.first_child_index + 2;
+			stack[stack_head + 3] = node.first_child_index + 3;
 			stack_head += 4;
 		}
 		else
@@ -107,10 +107,7 @@ void ComputeAccelerationsCUDA(CUDAContext& cuda_context, std::vector<Particle>& 
 			node.GetCenterOfMass().y,
 			node.GetTotalMass(),
 			node.GetWidth() * node.GetWidth(),
-			node.GetChildren()[0],
-			node.GetChildren()[1],
-			node.GetChildren()[2],
-			node.GetChildren()[3],
+			node.GetFirstChildIndex(),
 			node_particles.empty() ? 0 : static_cast<uint32_t>(&node_particles.front() - particles.data()),
 			node_particles.empty() ? 0 : static_cast<uint32_t>(&node_particles.back() - particles.data() + 1),
 			node.HasChildren()
@@ -125,7 +122,6 @@ void ComputeAccelerationsCUDA(CUDAContext& cuda_context, std::vector<Particle>& 
 		settings.theta,
 		settings.softening
 	);
-	cudaDeviceSynchronize();
 
 	cudaMemcpy(new_accelerations, cuda_context.accelerations, 2 * sizeof(float) * particles.size(), cudaMemcpyDeviceToHost);
 }
