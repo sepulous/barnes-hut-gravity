@@ -13,16 +13,15 @@ static float RandRange(float min_inclusive, float max_inclusive)
 	return dist(generator);
 }
 
-std::array<const char*, 4> Configuration::names = {
-	"Uniform Square",
-	"Uniform Disk",
-	"Gaussian Cloud",
-	"Plummer Disk"
-};
-
-std::array<const char*, 4> Configuration::GetNames()
+std::array<ConfigurationType, 4> Configuration::GetTypes()
 {
-	return names;
+	static std::array<ConfigurationType, 4> types {
+		ConfigurationType::UNIFORM_SQUARE,
+		ConfigurationType::UNIFORM_DISK,
+		ConfigurationType::GAUSSIAN_CLOUD,
+		ConfigurationType::PLUMMER_DISK
+	};
+	return types;
 }
 
 ConfigurationType Configuration::NameToType(const char* name)

@@ -30,12 +30,11 @@ public:
 
 	static ConfigurationType NameToType(const char* name);
 	static const char* TypeToName(ConfigurationType type);
-	static std::array<const char*, 4> GetNames();
+	static std::array<ConfigurationType, 4> GetTypes();
 
 private:
 	static std::vector<Particle> GenerateUniformSquare(int particle_count = 1000);
 	static std::vector<Particle> GenerateUniformDisk(int particle_count = 1000);
 	static std::vector<Particle> GenerateGaussianCloud(int particle_count = 1000, float variance = 0.1f);
 	static std::vector<Particle> GeneratePlummerDisk(int particle_count = 1000, float plummer_radius = 0.1f);
-	static std::array<const char*, 4> names;
 };

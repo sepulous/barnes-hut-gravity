@@ -44,7 +44,7 @@ int main()
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	window = glfwCreateWindow(1280, 720, "Barnes-Hut Gravity Simulation", NULL, NULL);
+	window = glfwCreateWindow(1280, 720, "Barnes-Hut Gravity Simulator", NULL, NULL);
 	if (!window)
 	{
 		glfwTerminate();
@@ -242,8 +242,9 @@ int main()
 		auto current_config = Configuration::TypeToName(configuration_type);
 		if (ImGui::BeginCombo("##combo", current_config))
 		{
-			for (auto config_name : Configuration::GetNames())
+			for (auto type : Configuration::GetTypes())
 			{
+				auto config_name = Configuration::TypeToName(type);
 				bool already_selected = (current_config == config_name);
 
 				if (ImGui::Selectable(config_name, already_selected))
