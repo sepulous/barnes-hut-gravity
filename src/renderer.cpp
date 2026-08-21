@@ -232,7 +232,7 @@ void Renderer::Resize(int width, int height)
         glBindTexture(GL_TEXTURE_2D, texture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         glBindTexture(GL_TEXTURE_2D, 0);
-        glViewport(0, 0, width, height);
+        glViewport(0.5f * (width - size), 0.5f * (height - size), size, size);
     }
 }
 
