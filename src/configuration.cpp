@@ -13,7 +13,7 @@ static float RandRange(float min_inclusive, float max_inclusive)
 	return dist(generator);
 }
 
-std::array<ConfigurationType, 4> Configuration::GetTypes()
+std::array<ConfigurationType, 4> GetConfigTypes()
 {
 	static std::array<ConfigurationType, 4> types {
 		ConfigurationType::UNIFORM_SQUARE,
@@ -24,7 +24,7 @@ std::array<ConfigurationType, 4> Configuration::GetTypes()
 	return types;
 }
 
-ConfigurationType Configuration::NameToType(const char* name)
+ConfigurationType ConfigNameToType(const char* name)
 {
 	if (name == "Uniform Square")
 		return ConfigurationType::UNIFORM_SQUARE;
@@ -36,7 +36,7 @@ ConfigurationType Configuration::NameToType(const char* name)
 		return ConfigurationType::PLUMMER_DISK;
 }
 
-const char* Configuration::TypeToName(ConfigurationType type)
+const char* ConfigTypeToName(ConfigurationType type)
 {
 	if (type == ConfigurationType::UNIFORM_SQUARE)
 		return "Uniform Square";
@@ -48,7 +48,7 @@ const char* Configuration::TypeToName(ConfigurationType type)
 		return "Plummer Disk";
 }
 
-std::vector<Particle> Configuration::GenerateUniformSquare(int particle_count)
+std::vector<Particle> GenerateUniformSquare(int particle_count)
 {
 	std::vector<Particle> particles;
 	particles.reserve(particle_count);
@@ -69,7 +69,7 @@ std::vector<Particle> Configuration::GenerateUniformSquare(int particle_count)
 	return particles;
 }
 
-std::vector<Particle> Configuration::GenerateUniformDisk(int particle_count)
+std::vector<Particle> GenerateUniformDisk(int particle_count)
 {
 	std::vector<Particle> particles;
 	particles.reserve(particle_count);
@@ -94,7 +94,7 @@ std::vector<Particle> Configuration::GenerateUniformDisk(int particle_count)
 	return particles;
 }
 
-std::vector<Particle> Configuration::GenerateGaussianCloud(int particle_count, float variance)
+std::vector<Particle> GenerateGaussianCloud(int particle_count, float variance)
 {
 	std::vector<Particle> particles;
 	particles.reserve(particle_count);
@@ -119,7 +119,7 @@ std::vector<Particle> Configuration::GenerateGaussianCloud(int particle_count, f
 	return particles;
 }
 
-std::vector<Particle> Configuration::GeneratePlummerDisk(int particle_count, float plummer_radius)
+std::vector<Particle> GeneratePlummerDisk(int particle_count, float plummer_radius)
 {
 	std::vector<Particle> particles;
 	particles.reserve(particle_count);

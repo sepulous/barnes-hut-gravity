@@ -111,8 +111,13 @@ int main()
 		.time_step = 0.01f
 	};
 
-	ConfigurationType configuration_type = ConfigurationType::UNIFORM_SQUARE;
-	std::vector<Particle> initial_configuration = Configuration::Generate(configuration_type, 10'000);
+	ConfigurationSettings configuration_settings {
+		.type = ConfigurationType::UNIFORM_SQUARE,
+		.particle_count = 5'000,
+		.variance = 0.05f,
+		.plummer_radius = 0.2f
+	};
+	std::vector<Particle> initial_configuration = GenerateUniformSquare(10'000);
 	std::vector<Particle> particles = initial_configuration;
 
 	//
@@ -222,8 +227,7 @@ int main()
 
 		ImGui::Text("Simulation Parameters");
 
-		if (running)
-			ImGui::BeginDisabled();
+		ImGui::BeginDisabled(running);
 
 		ImGui::InputScalar("Max Steps", ImGuiDataType_U32, &settings.max_steps);
 		ImGui::InputScalar("Leaf Capacity", ImGuiDataType_U32, &settings.leaf_capacity, &leaf_capacity_step, &leaf_capacity_step);
@@ -237,14 +241,19 @@ int main()
 		ImGui::InputFloat("Theta", &settings.theta, 0.0f, 2.0f, "%.2f");
 		ImGui::InputFloat("Time Step", &settings.time_step, 0, 0, "%.6f");
 
+		ImGui::EndDisabled();
+
 		ImGui::Text("Initial Configuration");
 
-		auto current_config = Configuration::TypeToName(configuration_type);
+		ImGui::BeginDisabled(running);
+
+		// Configuration type
+		auto current_config = ConfigTypeToName(configuration_settings.type);
 		if (ImGui::BeginCombo("##combo", current_config))
 		{
-			for (auto type : Configuration::GetTypes())
+			for (auto type : GetConfigTypes())
 			{
-				auto config_name = Configuration::TypeToName(type);
+				auto config_name = ConfigTypeToName(type);
 				bool already_selected = (current_config == config_name);
 
 				if (ImGui::Selectable(config_name, already_selected))
@@ -252,9 +261,18 @@ int main()
 					current_config = config_name;
 					if (!already_selected) // Just changed configuration
 					{
+						configuration_settings.type = ConfigNameToType(config_name);
+
+						if (configuration_settings.type == ConfigurationType::UNIFORM_SQUARE)
+							initial_configuration = GenerateUniformSquare(configuration_settings.particle_count);
+						else if (configuration_settings.type == ConfigurationType::UNIFORM_DISK)
+							initial_configuration = GenerateUniformDisk(configuration_settings.particle_count);
+						else if (configuration_settings.type == ConfigurationType::GAUSSIAN_CLOUD)
+							initial_configuration = GenerateGaussianCloud(configuration_settings.particle_count, configuration_settings.variance);
+						else if (configuration_settings.type == ConfigurationType::PLUMMER_DISK)
+							initial_configuration = GeneratePlummerDisk(configuration_settings.particle_count, configuration_settings.plummer_radius);
+
 						reset = true;
-						configuration_type = Configuration::NameToType(config_name);
-						initial_configuration = Configuration::Generate(configuration_type);
 					}
 				}
 
@@ -264,8 +282,41 @@ int main()
 			ImGui::EndCombo();
 		}
 
-		if (running)
-			ImGui::EndDisabled();
+		// Configuration parameters
+		if (configuration_settings.type == ConfigurationType::UNIFORM_SQUARE)
+		{
+			if (ImGui::InputInt("# Particles", &configuration_settings.particle_count))
+			{
+				initial_configuration = GenerateUniformSquare(configuration_settings.particle_count);
+				reset = true;
+			}
+		}
+		else if (configuration_settings.type == ConfigurationType::UNIFORM_DISK)
+		{
+			if (ImGui::InputInt("# Particles", &configuration_settings.particle_count))
+			{
+				initial_configuration = GenerateUniformDisk(configuration_settings.particle_count);
+				reset = true;
+			}
+		}
+		else if (configuration_settings.type == ConfigurationType::GAUSSIAN_CLOUD)
+		{
+			if (ImGui::InputInt("# Particles", &configuration_settings.particle_count) || ImGui::InputFloat("Variance", &configuration_settings.variance))
+			{
+				initial_configuration = GenerateGaussianCloud(configuration_settings.particle_count, configuration_settings.variance);
+				reset = true;
+			}
+		}
+		else if (configuration_settings.type == ConfigurationType::PLUMMER_DISK)
+		{
+			if (ImGui::InputInt("# Particles", &configuration_settings.particle_count) || ImGui::InputFloat("Plummer Radius", &configuration_settings.plummer_radius))
+			{
+				initial_configuration = GeneratePlummerDisk(configuration_settings.particle_count, configuration_settings.plummer_radius);
+				reset = true;
+			}
+		}
+
+		ImGui::EndDisabled();
 
 		if (!running)
 		{
