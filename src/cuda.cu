@@ -126,9 +126,39 @@ void ComputeAccelerationsCUDA(CUDAContext& cuda_context, std::vector<Particle>& 
 	cudaMemcpy(new_accelerations, cuda_context.accelerations, 2 * sizeof(float) * particles.size(), cudaMemcpyDeviceToHost);
 }
 
-CUDAContext::CUDAContext(size_t num_particles, size_t max_tree_depth)
+CUDAContext::CUDAContext(size_t particle_count, size_t max_tree_depth)
 {
-	cudaMallocManaged((void**)&accelerations, 2 * sizeof(float) * num_particles);
-	cudaMallocManaged((void**)&particles, sizeof(GPUParticle) * num_particles);
-	cudaMallocManaged((void**)&tree, sizeof(GPUTreeNode) * std::pow(4, max_tree_depth));
+	this->particle_count = particle_count;
+	this->max_tree_depth = max_tree_depth;
+	cudaMallocManaged(reinterpret_cast<void**>(&accelerations), 2 * sizeof(float) * particle_count);
+	cudaMallocManaged(reinterpret_cast<void**>(&particles), sizeof(GPUParticle) * particle_count);
+	cudaMallocManaged(reinterpret_cast<void**>(&tree), sizeof(GPUTreeNode) * std::pow(4, max_tree_depth));
+}
+
+void CUDAContext::Realloc(size_t particle_count, size_t max_tree_depth)
+{
+	if (particle_count != this->particle_count)
+	{
+		float* new_accelerations = nullptr;
+		cudaMallocManaged(reinterpret_cast<void**>(&new_accelerations), 2 * sizeof(float) * particle_count);
+		cudaFree(accelerations);
+		accelerations = new_accelerations;
+
+		GPUParticle* new_particles = nullptr;
+		cudaMallocManaged(reinterpret_cast<void**>(&new_particles), sizeof(GPUParticle) * particle_count);
+		cudaFree(particles);
+		particles = new_particles;
+
+		this->particle_count = particle_count;
+	}
+
+	if (max_tree_depth != this->max_tree_depth)
+	{
+		GPUTreeNode* new_tree = nullptr;
+		cudaMallocManaged(reinterpret_cast<void**>(&new_tree), sizeof(GPUTreeNode) * std::pow(4, max_tree_depth));
+		cudaFree(tree);
+		tree = new_tree;
+
+		this->max_tree_depth = max_tree_depth;
+	}
 }

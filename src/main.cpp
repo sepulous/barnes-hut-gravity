@@ -104,7 +104,7 @@ int main()
 	SimulationSettings settings {
 		.max_steps = 0,
 		.leaf_capacity = 64,
-		.maximum_tree_depth = 8,
+		.maximum_tree_depth = 6,
 		.threads_per_block = 256,
 		.softening = 1e-6f,
 		.theta = 0.5f,
@@ -117,7 +117,7 @@ int main()
 		.variance = 0.05f,
 		.plummer_radius = 0.2f
 	};
-	std::vector<Particle> initial_configuration = GenerateUniformSquare(10'000);
+	std::vector<Particle> initial_configuration = GenerateUniformSquare(configuration_settings.particle_count);
 	std::vector<Particle> particles = initial_configuration;
 
 	//
@@ -147,8 +147,11 @@ int main()
 			zoom = 1.0f;
 			Renderer::SetZoom(zoom);
 
-			if (initial_configuration.size() != particles.size())
+			if (initial_configuration.size() != particles.size()) // Particle count changed
+			{
 				Renderer::SetParticleCount(initial_configuration.size());
+				cuda_context.Realloc(initial_configuration.size(), settings.maximum_tree_depth);
+			}
 
 			particles = initial_configuration;
 			for (int i = 0; i < particles.size(); i++)
@@ -235,7 +238,11 @@ int main()
 
 		ImGui::InputScalar("Max Steps", ImGuiDataType_U32, &settings.max_steps);
 		ImGui::InputScalar("Leaf Capacity", ImGuiDataType_U32, &settings.leaf_capacity, &leaf_capacity_step, &leaf_capacity_step);
-		ImGui::InputScalar("Maximum Tree Depth", ImGuiDataType_U32, &settings.maximum_tree_depth, &maximum_tree_depth_step, &maximum_tree_depth_step);
+		if (ImGui::InputScalar("Maximum Tree Depth", ImGuiDataType_U32, &settings.maximum_tree_depth, &maximum_tree_depth_step, &maximum_tree_depth_step))
+		{
+			settings.maximum_tree_depth = glm::clamp(settings.maximum_tree_depth, 1u, 12u);
+			cuda_context.Realloc(particles.size(), settings.maximum_tree_depth);
+		}
 		if (gpu_info.cuda_supported)
 		{
 			ImGui::InputScalar("Threads/Block", ImGuiDataType_U32, &settings.threads_per_block, &threads_per_block_step, &threads_per_block_step);

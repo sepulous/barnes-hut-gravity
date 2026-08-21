@@ -30,9 +30,12 @@ struct CUDAContext
 	float* accelerations = nullptr;
 	GPUParticle* particles = nullptr;
 	GPUTreeNode* tree = nullptr;
+	size_t particle_count = 0;
+	size_t max_tree_depth = 0;
 
 	CUDAContext() = default;
-	CUDAContext(size_t num_particles, size_t max_tree_depth);
+	CUDAContext(size_t particle_count, size_t max_tree_depth);
+	void Realloc(size_t particle_count, size_t max_tree_depth);
 };
 
 void ComputeAccelerationsCUDA(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings);
