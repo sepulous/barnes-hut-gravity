@@ -222,6 +222,7 @@ int main()
 
 		ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
 		ImGui::SetNextWindowSize(ImVec2(control_width, io.DisplaySize.y), ImGuiCond_Once);
+		ImGui::SetNextWindowSizeConstraints(ImVec2(0, io.DisplaySize.y), ImVec2(io.DisplaySize.x, io.DisplaySize.y));
 
 		ImGui::Begin("Controls", 0, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
 
