@@ -82,7 +82,7 @@ __global__ void KernelComputeAccelerations(const GPUParticle* __restrict__ parti
 	accelerations[2 * particle_index + 1] = new_acceleration_y;
 }
 
-void ComputeAccelerationsCUDA(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings)
+void ComputeAccelerationsCUDA(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, std::vector<float>& new_accelerations, SimulationSettings settings)
 {
 	size_t blocks = (particles.size() + settings.threads_per_block - 1) / settings.threads_per_block;
 
@@ -123,7 +123,7 @@ void ComputeAccelerationsCUDA(CUDAContext& cuda_context, std::vector<Particle>& 
 		settings.softening
 	);
 
-	cudaMemcpy(new_accelerations, cuda_context.accelerations, 2 * sizeof(float) * particles.size(), cudaMemcpyDeviceToHost);
+	cudaMemcpy(new_accelerations.data(), cuda_context.accelerations, 2 * sizeof(float) * particles.size(), cudaMemcpyDeviceToHost);
 }
 
 CUDAContext::CUDAContext(size_t particle_count, size_t max_tree_depth)

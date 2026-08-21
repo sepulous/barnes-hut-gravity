@@ -27,7 +27,7 @@
 
 float zoom = 1.0f;
 
-void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings);
+void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::vector<QuadTree>& tree, std::vector<float>& new_accelerations, SimulationSettings settings);
 
 int main()
 {
@@ -117,6 +117,7 @@ int main()
 		.variance = 0.05f,
 		.plummer_radius = 0.2f
 	};
+
 	std::vector<Particle> initial_configuration = GenerateUniformSquare(configuration_settings.particle_count);
 	std::vector<Particle> particles = initial_configuration;
 
@@ -131,7 +132,9 @@ int main()
 	Renderer::Init(particles.size());
 	Renderer::SetZoom(1.0f);
 
-	float* new_accelerations = new float[2 * particles.size()];
+	std::vector<float> new_accelerations;
+	new_accelerations.reserve(2 * particles.size());
+
 	float max_position_coord = 1.0f;
 
 	unsigned long long step = 0;
@@ -147,10 +150,11 @@ int main()
 			zoom = 1.0f;
 			Renderer::SetZoom(zoom);
 
-			if (initial_configuration.size() != particles.size()) // Particle count changed
+			if (configuration_settings.particle_count != particles.size())
 			{
-				Renderer::SetParticleCount(initial_configuration.size());
-				cuda_context.Realloc(initial_configuration.size(), settings.maximum_tree_depth);
+				Renderer::SetParticleCount(configuration_settings.particle_count);
+				if (configuration_settings.particle_count > new_accelerations.size())
+					new_accelerations.resize(2 * configuration_settings.particle_count);
 			}
 
 			particles = initial_configuration;
@@ -191,6 +195,8 @@ int main()
 			//
 			// Compute accelerations
 			//
+
+			cuda_context.Realloc(configuration_settings.particle_count, settings.maximum_tree_depth);
 
 			Timer::Start("Acceleration");
 			if (gpu_info.cuda_supported)
@@ -241,7 +247,6 @@ int main()
 		if (ImGui::InputScalar("Maximum Tree Depth", ImGuiDataType_U32, &settings.maximum_tree_depth, &maximum_tree_depth_step, &maximum_tree_depth_step))
 		{
 			settings.maximum_tree_depth = glm::clamp(settings.maximum_tree_depth, 1u, 12u);
-			cuda_context.Realloc(particles.size(), settings.maximum_tree_depth);
 		}
 		if (gpu_info.cuda_supported)
 		{
@@ -413,7 +418,7 @@ int main()
 	return 0;
 }
 
-void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings)
+void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::vector<QuadTree>& tree, std::vector<float>& new_accelerations, SimulationSettings settings)
 {
 	constexpr float G = 6.6743e-9f;
 	const float theta_squared = settings.theta * settings.theta;

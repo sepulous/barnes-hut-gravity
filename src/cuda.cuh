@@ -38,4 +38,4 @@ struct CUDAContext
 	void Realloc(size_t particle_count, size_t max_tree_depth);
 };
 
-void ComputeAccelerationsCUDA(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, float* new_accelerations, SimulationSettings settings);
+void ComputeAccelerationsCUDA(CUDAContext& cuda_context, std::vector<Particle>& particles, std::vector<QuadTree>& tree, std::vector<float>& new_accelerations, SimulationSettings settings);
