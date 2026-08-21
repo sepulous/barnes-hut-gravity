@@ -165,21 +165,45 @@ void Renderer::SetParticleCount(size_t new_count)
         GLuint new_vbo;
         glCreateBuffers(1, &new_vbo);
 
+        // New buffer object
         glNamedBufferStorage(
             new_vbo,
-            new_count,
+            new_count * (2 * sizeof(float)),
             nullptr,
-            GL_DYNAMIC_STORAGE_BIT
+            GL_MAP_WRITE_BIT |
+            GL_MAP_PERSISTENT_BIT |
+            GL_MAP_COHERENT_BIT
         );
 
+        // Copy old data
         glCopyNamedBufferSubData(
             particle_vbo,
             new_vbo,
             0,
             0,
-            particle_count
+            particle_count * (2 * sizeof(float))
         );
 
+        // Update position pointer
+        positions = static_cast<float*>(
+            glMapNamedBufferRange(
+                new_vbo,
+                0,
+                new_count * (2 * sizeof(float)),
+                GL_MAP_WRITE_BIT |
+                GL_MAP_PERSISTENT_BIT |
+                GL_MAP_COHERENT_BIT
+            )
+        );
+
+        // Update VAO
+        glBindVertexArray(particle_vao);
+        glBindBuffer(GL_ARRAY_BUFFER, new_vbo);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
+        glEnableVertexAttribArray(0);
+
+        // Update VBO
+        glUnmapNamedBuffer(particle_vbo);
         glDeleteBuffers(1, &particle_vbo);
         particle_vbo = new_vbo;
     }
