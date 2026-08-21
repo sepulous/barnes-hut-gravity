@@ -144,6 +144,9 @@ int main()
 
 		if (reset)
 		{
+			zoom = 1.0f;
+			Renderer::SetZoom(zoom);
+
 			if (initial_configuration.size() != particles.size())
 				Renderer::SetParticleCount(initial_configuration.size());
 
