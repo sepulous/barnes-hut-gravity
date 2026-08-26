@@ -32,8 +32,7 @@ The following illustrates that the overhead of constructing and using the tree i
 This project uses <a href="https://en.wikipedia.org/wiki/Verlet_integration#Velocity_Verlet" target="_blank">velocity Verlet integration</a>. Velocity Verlet is as simple to compute as Euler, but has a lower global error of O(Δt<sup>2</sup>) and better numerical stability. It also conserves a modified form of the system's energy, thus preserving the expected qualitative behavior. Using a higher-order method such as this allows one to achieve better accuracy for the same runtime (by using the same time step), or faster runtime with the same accuracy (by increasing the time step). The following illustrates the difference in energy conservation between Euler and velocity Verlet:
 
 <div align="center">
-
-![Energy vs Steps](https://i.ibb.co/DP8MFWgY/energy-vs-steps.png)
+<img width="60%" src="https://i.ibb.co/DP8MFWgY/energy-vs-steps.png" alt="Energy vs Steps" />
 </div>
 
 # Building
