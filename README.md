@@ -22,8 +22,7 @@ Clearly, θ controls the tradeoff between accuracy and efficiency. There are dim
 
 The following illustrates that the overhead of constructing and using the tree is significantly outweighed by the reduction in work that it allows:
 <div align="center">
-
-![Runtime vs Particle Count](https://i.ibb.co/C3BVBwsV/runtime-vs-particle-count.png)
+<img width="60%" src="https://i.ibb.co/C3BVBwsV/runtime-vs-particle-count.png" alt="Runtime vs Particle Count" />
 </div>
 
 ### Velocity Verlet Integration
