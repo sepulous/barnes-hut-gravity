@@ -6,13 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-set(CMAKE_CUDA_ARCHITECTURES 86)
-
-# Enable Hot Reload for MSVC compilers if supported.
-if (POLICY CMP0141)
-  cmake_policy(SET CMP0141 NEW)
-  #set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
-endif()
+set(CMAKE_CUDA_ARCHITECTURES native)
 
 find_package(OpenMP REQUIRED)
 find_package(CUDAToolkit REQUIRED)
@@ -47,3 +41,5 @@ target_include_directories(BarnesHut PRIVATE
 	"third_party/glad/include"
 	"third_party/glm"
 )
+
+set_target_properties(BarnesHut PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
