@@ -25,6 +25,11 @@ The following illustrates that the overhead of constructing and using the tree i
 <img width="60%" src="https://i.ibb.co/C3BVBwsV/runtime-vs-particle-count.png" alt="Runtime vs Particle Count" />
 </div>
 
+Here is a comparison of the different runtimes (in seconds) with and without the approximation for different degrees of parallelism (this was for 10k particles in a uniform square with θ=0.5):
+<div align="center">
+<img width="60%" src="https://i.ibb.co/bjP8n1cn/comparison.png" alt="Strategy Comparison" />
+</div>
+
 ### Velocity Verlet Integration
 
 <a href="https://en.wikipedia.org/wiki/Euler_method" target="_blank">Euler integration</a> has a number of properties that make it unsuitable for physical simulations. First, it has a global error in position and velocity on the order of O(Δt), which means that it generally requires a very small time step for acceptable accuracy, thus requiring a longer runtime compared to higher-order methods. Additionally, Euler integration can exhibit numeric instability in certain situations, including orbital motion under Newtonian gravity. Lastly, Euler integration fails to conserve a system's energy, leading to qualitatively incorrect behavior due to energy drift over time. While these last two problems can be remedied through a <a href="https://en.wikipedia.org/wiki/Semi-implicit_Euler_method" target="_blank">modification</a>, the resulting global error is still first-order.
