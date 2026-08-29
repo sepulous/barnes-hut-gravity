@@ -7,8 +7,7 @@
 
 static float RandRange(float min_inclusive, float max_inclusive)
 {
-	//static std::mt19937_64 generator{ std::random_device{}() };
-	static std::mt19937_64 generator{ 69420 };
+	static std::mt19937_64 generator{ std::random_device{}() };
 	std::uniform_real_distribution<float> dist(min_inclusive, max_inclusive);
 	return dist(generator);
 }
