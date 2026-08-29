@@ -44,7 +44,7 @@ int main()
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	window = glfwCreateWindow(1280, 720, "Barnes-Hut Gravity Simulator", NULL, NULL);
+	window = glfwCreateWindow(1280, 720, "N-Body Gravity Simulator", NULL, NULL);
 	if (!window)
 	{
 		glfwTerminate();
@@ -102,18 +102,18 @@ int main()
 	bool reset = true;
 
 	SimulationSettings settings {
-		.max_steps = 0,
+		.max_steps = 1000,
 		.leaf_capacity = 64,
 		.maximum_tree_depth = 6,
 		.threads_per_block = 256,
-		.softening = 1e-6f,
+		.softening = 1e-3f,
 		.theta = 0.5f,
 		.time_step = 0.01f
 	};
 
 	ConfigurationSettings configuration_settings {
 		.type = ConfigurationType::UNIFORM_SQUARE,
-		.particle_count = 5'000,
+		.particle_count = 10'000,
 		.variance = 0.05f,
 		.plummer_radius = 0.2f
 	};
@@ -243,21 +243,36 @@ int main()
 		ImGui::BeginDisabled(running);
 
 		ImGui::InputScalar("Max Steps", ImGuiDataType_U32, &settings.max_steps);
+
 		ImGui::InputScalar("Leaf Capacity", ImGuiDataType_U32, &settings.leaf_capacity, &leaf_capacity_step, &leaf_capacity_step);
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("Adjust number of particles per leaf node (default: 64)");
+
 		if (ImGui::InputScalar("Maximum Tree Depth", ImGuiDataType_U32, &settings.maximum_tree_depth, &maximum_tree_depth_step, &maximum_tree_depth_step))
-		{
 			settings.maximum_tree_depth = glm::clamp(settings.maximum_tree_depth, 1u, 12u);
-		}
+
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("Adjust degree of spatial subdivision (default: 6)");
+
 		if (gpu_info.cuda_supported)
 		{
 			ImGui::InputScalar("Threads/Block", ImGuiDataType_U32, &settings.threads_per_block, &threads_per_block_step, &threads_per_block_step);
 			settings.threads_per_block = glm::min(settings.threads_per_block, gpu_info.max_threads_per_block);
 		}
+
 		ImGui::InputFloat("Softening", &settings.softening, 0, 0, "%.6f");
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("Adjust minimum distance in inverse square law (default: 0.001)");
+
 		ImGui::InputFloat("Theta", &settings.theta, 0.0f, 2.0f, "%.2f");
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("Adjust accuracy/speed tradeoff (default: 0.5)");
+
 		ImGui::InputFloat("Time Step", &settings.time_step, 0, 0, "%.6f");
 
 		ImGui::EndDisabled();
+
+		ImGui::Text("");
 
 		ImGui::Text("Initial Configuration");
 
@@ -334,6 +349,8 @@ int main()
 
 		ImGui::EndDisabled();
 
+		ImGui::Text("");
+
 		if (!running)
 		{
 			if (ImGui::Button("Start"))
@@ -402,11 +419,11 @@ int main()
 
 	double total_time = static_cast<double>(construction_time + integration_time + acceleration_time + render_time);
 	std::cout << "Computed " << step << " steps for " << particles.size() << " particles in " << (total_time / 1'000.0) << "s" << std::endl;
-	std::cout << "Construction: " << construction_time << "ms (" << (100.0 * static_cast<double>(construction_time) / total_time) << "%)" << std::endl;
-	std::cout << "    Mass Calculation: " << mass_time << "ms (" << (100.0 * static_cast<double>(mass_time) / static_cast<double>(construction_time)) << "% of construction)" << std::endl;
-	std::cout << "Acceleration Computation: " << acceleration_time << "ms (" << (100.0 * static_cast<double>(acceleration_time) / total_time) << "%)" << std::endl;
-	std::cout << "Integration: " << integration_time << "ms (" << (100.0 * static_cast<double>(integration_time) / total_time) << "%)" << std::endl;
-	std::cout << "Rendering: " << render_time << "ms (" << (100.0 * static_cast<double>(render_time) / total_time) << "%)" << std::endl;
+	//std::cout << "Construction: " << construction_time << "ms (" << (100.0 * static_cast<double>(construction_time) / total_time) << "%)" << std::endl;
+	//std::cout << "    Mass Calculation: " << mass_time << "ms (" << (100.0 * static_cast<double>(mass_time) / static_cast<double>(construction_time)) << "% of construction)" << std::endl;
+	//std::cout << "Acceleration Computation: " << acceleration_time << "ms (" << (100.0 * static_cast<double>(acceleration_time) / total_time) << "%)" << std::endl;
+	//std::cout << "Integration: " << integration_time << "ms (" << (100.0 * static_cast<double>(integration_time) / total_time) << "%)" << std::endl;
+	//std::cout << "Rendering: " << render_time << "ms (" << (100.0 * static_cast<double>(render_time) / total_time) << "%)" << std::endl;
 
 	glfwTerminate();
 	ImGui_ImplOpenGL3_Shutdown();
@@ -420,8 +437,9 @@ int main()
 
 void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::vector<QuadTree>& tree, std::vector<float>& new_accelerations, SimulationSettings settings)
 {
-	constexpr float G = 6.6743e-9f;
+	constexpr float G = 6.6743e-11f;
 	const float theta_squared = settings.theta * settings.theta;
+	const float softening_squared = settings.softening * settings.softening;
 
 	#pragma omp parallel for
 	for (int i = 0; i < particles.size(); i++)
@@ -444,7 +462,7 @@ void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::
 
 			if (node_width_squared < com_distance_squared * theta_squared)
 			{
-				float inv_r3 = 1.0f / glm::sqrt(com_distance_squared + settings.softening);
+				float inv_r3 = 1.0f / glm::sqrt(com_distance_squared + softening_squared);
 				inv_r3 *= inv_r3 * inv_r3 * G * node.GetTotalMass();
 				new_acceleration += inv_r3 * com_displacement;
 			}
@@ -461,7 +479,7 @@ void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::
 				{
 					auto displacement = other_particle.position - particle.position;
 					auto distance_squared = glm::dot(displacement, displacement);
-					float inv_r3 = 1.0f / glm::sqrt(distance_squared + settings.softening);
+					float inv_r3 = 1.0f / glm::sqrt(distance_squared + softening_squared);
 					inv_r3 *= inv_r3 * inv_r3 * G * other_particle.mass;
 					new_acceleration += inv_r3 * displacement;
 				}
