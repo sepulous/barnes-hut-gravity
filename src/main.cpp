@@ -27,8 +27,6 @@
 
 float zoom = 1.0f;
 
-void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::vector<QuadTree>& tree, std::vector<float>& new_accelerations, SimulationSettings settings);
-
 int main()
 {
 	//
@@ -137,8 +135,6 @@ int main()
 	std::vector<float> new_accelerations;
 	new_accelerations.reserve(2 * particles.size());
 
-	float max_position_coord = 1.0f;
-
 	unsigned long long step = 0;
 	while (!glfwWindowShouldClose(window))
 	{
@@ -176,7 +172,7 @@ int main()
 			// Update positions and construct quad tree
 			//
 
-			Timer::Start("Construction");
+			static float max_position_coord = 0;
 			for (int i = 0; i < particles.size(); i++)
 			{
 				Particle& particle = particles[i];
@@ -188,30 +184,19 @@ int main()
 			}
 			QuadTree::GetPool().emplace_back(glm::dvec2{ 0, 0 }, 2.1f * max_position_coord);
 			QuadTree::GetPool()[0].Build(std::span<Particle>(particles.begin(), particles.end()));
-
-			Timer::Start("Mass");
 			QuadTree::GetPool()[0].CalculateMass();
-			Timer::End();
-			Timer::End();
 
 			//
 			// Compute accelerations
 			//
 
 			cuda_context.Realloc(configuration_settings.particle_count, settings.maximum_tree_depth);
-
-			Timer::Start("Acceleration");
-			if (gpu_info.cuda_supported)
-				ComputeAccelerationsCUDA(cuda_context, particles, QuadTree::GetPool(), new_accelerations, settings); // Blocks while GPU finishes
-			else
-				ComputeAccelerationsCPU(particles, QuadTree::GetPool(), new_accelerations, settings);
-			Timer::End();
+			ComputeAccelerationsCUDA(cuda_context, particles, QuadTree::GetPool(), new_accelerations, settings); // Blocks while GPU finishes
 
 			//
 			// Integrate (velocity Verlet)
 			//
 
-			Timer::Start("Integration");
 			#pragma omp parallel for
 			for (int i = 0; i < particles.size(); i++)
 			{
@@ -220,7 +205,6 @@ int main()
 				particle.velocity += 0.5f * (particle.acceleration + new_acceleration) * settings.time_step;
 				particle.acceleration = new_acceleration;
 			}
-			Timer::End();
 
 			step++;
 			if (settings.max_steps > 0 && step >= settings.max_steps)
@@ -395,14 +379,8 @@ int main()
 		auto avail = ImGui::GetContentRegionAvail();
 		float size = glm::max(avail.x, avail.y);
 
-		if (running)
-			Timer::Start("Rendering");
-
 		Renderer::Resize(avail.x, avail.y);
 		Renderer::Render();
-
-		if (running)
-			Timer::End();
 
 		ImGui::Image(
 			(ImTextureID)Renderer::GetTexture(),
@@ -417,82 +395,10 @@ int main()
 		glfwSwapBuffers(window);
 	}
 
-	auto construction_time = Timer::GetElapsed<std::chrono::milliseconds>("Construction");
-	auto mass_time = Timer::GetElapsed<std::chrono::milliseconds>("Mass");
-	auto integration_time = Timer::GetElapsed<std::chrono::milliseconds>("Integration");
-	auto acceleration_time = Timer::GetElapsed<std::chrono::milliseconds>("Acceleration");
-	auto render_time = Timer::GetElapsed<std::chrono::milliseconds>("Rendering");
-
-	double total_time = static_cast<double>(construction_time + integration_time + acceleration_time + render_time);
-	std::cout << "Computed " << step << " steps for " << particles.size() << " particles in " << (total_time / 1'000.0) << "s" << std::endl;
-	//std::cout << "Construction: " << construction_time << "ms (" << (100.0 * static_cast<double>(construction_time) / total_time) << "%)" << std::endl;
-	//std::cout << "    Mass Calculation: " << mass_time << "ms (" << (100.0 * static_cast<double>(mass_time) / static_cast<double>(construction_time)) << "% of construction)" << std::endl;
-	//std::cout << "Acceleration Computation: " << acceleration_time << "ms (" << (100.0 * static_cast<double>(acceleration_time) / total_time) << "%)" << std::endl;
-	//std::cout << "Integration: " << integration_time << "ms (" << (100.0 * static_cast<double>(integration_time) / total_time) << "%)" << std::endl;
-	//std::cout << "Rendering: " << render_time << "ms (" << (100.0 * static_cast<double>(render_time) / total_time) << "%)" << std::endl;
-
 	glfwTerminate();
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
 
-	std::cin.get();
-
 	return 0;
-}
-
-void ComputeAccelerationsCPU(const std::vector<Particle>& particles, const std::vector<QuadTree>& tree, std::vector<float>& new_accelerations, SimulationSettings settings)
-{
-	constexpr float G = 6.6743e-11f;
-	const float theta_squared = settings.theta * settings.theta;
-	const float softening_squared = settings.softening * settings.softening;
-
-	#pragma omp parallel for
-	for (int i = 0; i < particles.size(); i++)
-	{
-		const Particle& particle = particles[i];
-		glm::vec2 new_acceleration{ 0, 0 };
-
-		std::vector<uint32_t> stack{ 0 };
-		stack.reserve(3 * settings.maximum_tree_depth + 1);
-
-		while (!stack.empty())
-		{
-			uint32_t node_index = stack.back();
-			const QuadTree& node = tree[node_index];
-			stack.pop_back();
-
-			auto com_displacement = node.GetCenterOfMass() - particle.position;
-			auto com_distance_squared = glm::dot(com_displacement, com_displacement);
-			auto node_width_squared = node.GetWidth() * node.GetWidth();
-
-			if (node_width_squared < com_distance_squared * theta_squared)
-			{
-				float inv_r3 = 1.0f / glm::sqrt(com_distance_squared + softening_squared);
-				inv_r3 *= inv_r3 * inv_r3 * G * node.GetTotalMass();
-				new_acceleration += inv_r3 * com_displacement;
-			}
-			else if (node.HasChildren())
-			{
-				stack.push_back(node.GetFirstChildIndex());
-				stack.push_back(node.GetFirstChildIndex() + 1);
-				stack.push_back(node.GetFirstChildIndex() + 2);
-				stack.push_back(node.GetFirstChildIndex() + 3);
-			}
-			else
-			{
-				for (auto& other_particle : node.GetParticles())
-				{
-					auto displacement = other_particle.position - particle.position;
-					auto distance_squared = glm::dot(displacement, displacement);
-					float inv_r3 = 1.0f / glm::sqrt(distance_squared + softening_squared);
-					inv_r3 *= inv_r3 * inv_r3 * G * other_particle.mass;
-					new_acceleration += inv_r3 * displacement;
-				}
-			}
-		}
-
-		new_accelerations[2 * i] = new_acceleration.x;
-		new_accelerations[2 * i + 1] = new_acceleration.y;
-	}
 }
