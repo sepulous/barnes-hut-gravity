@@ -113,7 +113,7 @@ int main()
 	ConfigurationSettings configuration_settings {
 		.type = ConfigurationType::UNIFORM_SQUARE,
 		.particle_count = 10'000,
-		.angular_speed = 0.005f,
+		.angular_speed = 0,
 		.variance = 0.05f,
 		.plummer_radius = 0.2f
 	};
@@ -197,7 +197,7 @@ int main()
 			// Integrate (velocity Verlet)
 			//
 
-			#pragma omp parallel for
+			#pragma omp parallel for schedule(static)
 			for (int i = 0; i < particles.size(); i++)
 			{
 				glm::vec2 new_acceleration{ new_accelerations[2 * i], new_accelerations[2 * i + 1] };
