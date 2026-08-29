@@ -8,7 +8,7 @@
 class Timer
 {
 public:
-	using Clock = std::chrono::steady_clock;
+	using Clock = std::chrono::high_resolution_clock;
 
 	static void Start(const std::string& label);
 	static void End();
