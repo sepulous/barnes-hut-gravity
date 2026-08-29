@@ -102,7 +102,7 @@ int main()
 	bool reset = true;
 
 	SimulationSettings settings {
-		.max_steps = 1000,
+		.max_steps = 0,
 		.leaf_capacity = 64,
 		.maximum_tree_depth = 6,
 		.threads_per_block = 256,
