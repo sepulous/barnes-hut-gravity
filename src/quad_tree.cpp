@@ -9,7 +9,7 @@
 #define BOTTOM_RIGHT 2
 #define BOTTOM_LEFT 3
 
-unsigned QuadTree::max_depth = 8;
+unsigned QuadTree::max_depth = 6;
 unsigned QuadTree::leaf_capacity = 64;
 std::vector<QuadTree> QuadTree::pool;
 
