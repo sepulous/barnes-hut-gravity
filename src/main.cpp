@@ -106,6 +106,7 @@ int main()
 		.leaf_capacity = 64,
 		.maximum_tree_depth = 6,
 		.threads_per_block = 256,
+		.gravity_strength = 1,
 		.softening = 1e-3f,
 		.theta = 0.5f,
 		.time_step = 0.01f
@@ -260,6 +261,10 @@ int main()
 			ImGui::InputScalar("Threads/Block", ImGuiDataType_U32, &settings.threads_per_block, &threads_per_block_step, &threads_per_block_step);
 			settings.threads_per_block = glm::min(settings.threads_per_block, gpu_info.max_threads_per_block);
 		}
+
+		ImGui::InputFloat("Gravity Strength", &settings.gravity_strength, 0, 0, "%.1f");
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("This factor multiplies G and thus changes the physics; it's only intended for visualization purposes (default: 1)");
 
 		ImGui::InputFloat("Softening", &settings.softening, 0, 0, "%.6f");
 		if (ImGui::IsItemHovered())
