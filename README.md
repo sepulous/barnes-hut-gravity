@@ -25,7 +25,7 @@ The following illustrates that the overhead of constructing and using the tree i
 <img width="60%" src="https://i.ibb.co/C3BVBwsV/runtime-vs-particle-count.png" alt="Runtime vs Particle Count" />
 </div>
 
-Here is a comparison of the different runtimes (in seconds) with and without the approximation for different degrees of parallelism (this was for 10k particles in a uniform square with θ=0.5):
+Here is a comparison of the different runtimes (in seconds) with and without the approximation for different degrees of parallelism (this was 100 steps for 10k particles in a uniform square with θ=0.5):
 <div align="center">
 <img width="60%" src="https://i.ibb.co/bjP8n1cn/comparison.png" alt="Strategy Comparison" />
 </div>
