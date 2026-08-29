@@ -114,6 +114,7 @@ int main()
 	ConfigurationSettings configuration_settings {
 		.type = ConfigurationType::UNIFORM_SQUARE,
 		.particle_count = 10'000,
+		.angular_speed = 0.005f,
 		.variance = 0.05f,
 		.plummer_radius = 0.2f
 	};
@@ -295,13 +296,13 @@ int main()
 						configuration_settings.type = ConfigNameToType(config_name);
 
 						if (configuration_settings.type == ConfigurationType::UNIFORM_SQUARE)
-							initial_configuration = GenerateUniformSquare(configuration_settings.particle_count);
+							initial_configuration = GenerateUniformSquare(configuration_settings.particle_count, configuration_settings.angular_speed);
 						else if (configuration_settings.type == ConfigurationType::UNIFORM_DISK)
-							initial_configuration = GenerateUniformDisk(configuration_settings.particle_count);
+							initial_configuration = GenerateUniformDisk(configuration_settings.particle_count, configuration_settings.angular_speed);
 						else if (configuration_settings.type == ConfigurationType::GAUSSIAN_CLOUD)
-							initial_configuration = GenerateGaussianCloud(configuration_settings.particle_count, configuration_settings.variance);
+							initial_configuration = GenerateGaussianCloud(configuration_settings.particle_count, configuration_settings.variance, configuration_settings.angular_speed);
 						else if (configuration_settings.type == ConfigurationType::PLUMMER_DISK)
-							initial_configuration = GeneratePlummerDisk(configuration_settings.particle_count, configuration_settings.plummer_radius);
+							initial_configuration = GeneratePlummerDisk(configuration_settings.particle_count, configuration_settings.plummer_radius, configuration_settings.angular_speed);
 
 						reset = true;
 					}
@@ -316,33 +317,33 @@ int main()
 		// Configuration parameters
 		if (configuration_settings.type == ConfigurationType::UNIFORM_SQUARE)
 		{
-			if (ImGui::InputInt("# Particles", &configuration_settings.particle_count))
+			if (ImGui::InputInt("# Particles", &configuration_settings.particle_count) || ImGui::InputFloat("Angular Speed", &configuration_settings.angular_speed))
 			{
-				initial_configuration = GenerateUniformSquare(configuration_settings.particle_count);
+				initial_configuration = GenerateUniformSquare(configuration_settings.particle_count, configuration_settings.angular_speed);
 				reset = true;
 			}
 		}
 		else if (configuration_settings.type == ConfigurationType::UNIFORM_DISK)
 		{
-			if (ImGui::InputInt("# Particles", &configuration_settings.particle_count))
+			if (ImGui::InputInt("# Particles", &configuration_settings.particle_count) || ImGui::InputFloat("Angular Speed", &configuration_settings.angular_speed))
 			{
-				initial_configuration = GenerateUniformDisk(configuration_settings.particle_count);
+				initial_configuration = GenerateUniformDisk(configuration_settings.particle_count, configuration_settings.angular_speed);
 				reset = true;
 			}
 		}
 		else if (configuration_settings.type == ConfigurationType::GAUSSIAN_CLOUD)
 		{
-			if (ImGui::InputInt("# Particles", &configuration_settings.particle_count) || ImGui::InputFloat("Variance", &configuration_settings.variance))
+			if (ImGui::InputInt("# Particles", &configuration_settings.particle_count) || ImGui::InputFloat("Variance", &configuration_settings.variance) || ImGui::InputFloat("Angular Speed", &configuration_settings.angular_speed))
 			{
-				initial_configuration = GenerateGaussianCloud(configuration_settings.particle_count, configuration_settings.variance);
+				initial_configuration = GenerateGaussianCloud(configuration_settings.particle_count, configuration_settings.variance, configuration_settings.angular_speed);
 				reset = true;
 			}
 		}
 		else if (configuration_settings.type == ConfigurationType::PLUMMER_DISK)
 		{
-			if (ImGui::InputInt("# Particles", &configuration_settings.particle_count) || ImGui::InputFloat("Plummer Radius", &configuration_settings.plummer_radius))
+			if (ImGui::InputInt("# Particles", &configuration_settings.particle_count) || ImGui::InputFloat("Plummer Radius", &configuration_settings.plummer_radius) || ImGui::InputFloat("Angular Speed", &configuration_settings.angular_speed))
 			{
-				initial_configuration = GeneratePlummerDisk(configuration_settings.particle_count, configuration_settings.plummer_radius);
+				initial_configuration = GeneratePlummerDisk(configuration_settings.particle_count, configuration_settings.plummer_radius, configuration_settings.angular_speed);
 				reset = true;
 			}
 		}

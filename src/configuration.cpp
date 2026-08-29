@@ -48,19 +48,19 @@ const char* ConfigTypeToName(ConfigurationType type)
 		return "Plummer Disk";
 }
 
-std::vector<Particle> GenerateUniformSquare(int particle_count)
+std::vector<Particle> GenerateUniformSquare(int particle_count, float angular_speed)
 {
 	std::vector<Particle> particles;
 	particles.reserve(particle_count);
 
 	for (int i = 0; i < particle_count; i++)
 	{
+		glm::vec2 position = { RandRange(-1.0f, 1.0f), RandRange(-1.0f, 1.0f) };
+		float r = glm::length(position);
+		float theta = glm::atan(position.y / position.x);
 		particles.push_back({
-			.position = {
-				RandRange(-1.0f, 1.0f),
-				RandRange(-1.0f, 1.0f)
-			},
-			.velocity = {0.0f, 0.0f},
+			.position = position,
+			.velocity = r * angular_speed * glm::vec2{-glm::sin(theta), glm::cos(theta)},
 			.acceleration = {0.0f, 0.0f},
 			.mass = 1.0f
 		});
@@ -69,7 +69,7 @@ std::vector<Particle> GenerateUniformSquare(int particle_count)
 	return particles;
 }
 
-std::vector<Particle> GenerateUniformDisk(int particle_count)
+std::vector<Particle> GenerateUniformDisk(int particle_count, float angular_speed)
 {
 	std::vector<Particle> particles;
 	particles.reserve(particle_count);
@@ -85,7 +85,7 @@ std::vector<Particle> GenerateUniformDisk(int particle_count)
 				r * glm::cos(theta),
 				r * glm::sin(theta)
 			},
-			.velocity = {0.0f, 0.0f},
+			.velocity = r * angular_speed * glm::vec2{-glm::sin(theta), glm::cos(theta)},
 			.acceleration = {0.0f, 0.0f},
 			.mass = 1.0f
 		});
@@ -94,7 +94,7 @@ std::vector<Particle> GenerateUniformDisk(int particle_count)
 	return particles;
 }
 
-std::vector<Particle> GenerateGaussianCloud(int particle_count, float variance)
+std::vector<Particle> GenerateGaussianCloud(int particle_count, float variance, float angular_speed)
 {
 	std::vector<Particle> particles;
 	particles.reserve(particle_count);
@@ -110,7 +110,7 @@ std::vector<Particle> GenerateGaussianCloud(int particle_count, float variance)
 				r * glm::cos(theta),
 				r * glm::sin(theta)
 			},
-			.velocity = {0.0f, 0.0f},
+			.velocity = r * angular_speed * glm::vec2{-glm::sin(theta), glm::cos(theta)},
 			.acceleration = {0.0f, 0.0f},
 			.mass = 1.0f
 		});
@@ -119,7 +119,7 @@ std::vector<Particle> GenerateGaussianCloud(int particle_count, float variance)
 	return particles;
 }
 
-std::vector<Particle> GeneratePlummerDisk(int particle_count, float plummer_radius)
+std::vector<Particle> GeneratePlummerDisk(int particle_count, float plummer_radius, float angular_speed)
 {
 	std::vector<Particle> particles;
 	particles.reserve(particle_count);
@@ -135,10 +135,10 @@ std::vector<Particle> GeneratePlummerDisk(int particle_count, float plummer_radi
 				r * glm::cos(theta),
 				r * glm::sin(theta)
 			},
-			.velocity = {0.0f, 0.0f},
+			.velocity = r * angular_speed * glm::vec2{-glm::sin(theta), glm::cos(theta)},
 			.acceleration = {0.0f, 0.0f},
 			.mass = 1.0f
-			});
+		});
 	}
 
 	return particles;
